@@ -81,16 +81,42 @@ jobs:
           npx --yes pnpm@10.34.6 --filter '@orca-cloud/relay^...' build
       - name: Install browser prerequisites
         run: pnpm exec playwright install --with-deps chromium
+      - name: Correct trusted zsh completion permissions
+        run: |
+          audit_status=0
+          zsh -fc 'autoload -Uz compaudit; compaudit' > "$RUNNER_TEMP/compaudit-paths" || audit_status=$?
+          test "$audit_status" -le 1
+          while IFS= read -r directory; do
+            test -n "$directory" || continue
+            case "$directory" in
+              /usr/local/share|/usr/local/share/zsh|/usr/local/share/zsh/*|/usr/share/zsh|/usr/share/zsh/*)
+                printf 'Securing completion path: %s\n' "$directory"
+                sudo chmod go-w -- "$directory"
+                ;;
+              *) printf 'Unexpected insecure completion path: %s\n' "$directory"; exit 1;;
+            esac
+          done < "$RUNNER_TEMP/compaudit-paths"
+          zsh -fc 'autoload -Uz compaudit; compaudit'
       - name: Verify exact candidate source
         run: test "$(git rev-parse HEAD)" = d0d3edd0f8cf8d4487ca85843b288b14c9c7ee43
-      - name: Full required test command
+      - name: Verify native shell contracts before the full run
+        run: |
+          xvfb-run --auto-servernum pnpm test:node --maxWorkers=4 \
+            src/main/shell-startup-feature-channel.test.ts \
+            src/main/daemon/shell-ready.test.ts \
+            src/main/daemon/repro-13767-shell-ready-marker-lost-to-exec.test.ts \
+            src/main/daemon/agent-startup-prompt-latency.node-pty.test.ts \
+            src/main/providers/startup-line-typed-length.live-shell.test.ts \
+            src/main/providers/local-pty-shell-startup-command.node-pty.test.ts \
+            src/main/runtime/launched-agent-crash-guard.live-shell.test.ts
+      - name: Full documented Node-only test command
         id: full-tests
-        run: xvfb-run --auto-servernum pnpm test --maxWorkers=4
+        run: xvfb-run --auto-servernum pnpm test:node --maxWorkers=4
       - name: Compare known platform assertions on unchanged baseline
         if: failure() && steps.full-tests.outcome == 'failure'
         run: |
           git checkout --detach 6fcc183ab951fb751cf02ccb9e2af3cf129a4316
-          xvfb-run --auto-servernum pnpm test --maxWorkers=1 \
+          xvfb-run --auto-servernum pnpm test:node --maxWorkers=1 \
             src/main/fish-xdg-data-dirs-handoff.test.ts \
             src/main/shell-startup-feature-channel.test.ts \
             src/main/daemon/shell-ready.test.ts \
