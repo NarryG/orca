@@ -18439,6 +18439,7 @@
       "receipt": {
         "unavailable": "Selected answer unavailable",
         "emptyAnswer": "Empty answer",
+        "declined": "Declined request",
         "cancelled": "Cancelled",
         "resolved": "Resolved",
         "resolver": "Answered on {{device}}",
@@ -18784,7 +18785,8 @@
         "send": "Submit",
         "next": "Next",
         "skip": "Skip",
-        "sending": "Sending…"
+        "sending": "Sending…",
+        "decline": "Decline request"
       },
       "ask": {
         "awaiting": "Awaiting user input:",

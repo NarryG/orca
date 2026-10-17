@@ -1,11 +1,7 @@
 import type { Readable, Writable } from 'node:stream'
 import { z } from 'zod'
-import {
-  AcpAgentError,
-  AcpAuthRequiredError,
-  AcpInvalidResponseError,
-  AcpRpcError
-} from './acp-errors'
+import { AcpRpcError } from './acp-errors'
+import { requestAcpResponse } from './acp-rpc-envelope'
 import { AcpJsonRpcPeer, type AcpPeerOptions, type AcpRequestContext } from './acp-json-rpc-peer'
 import {
   answerAcpPermission,
@@ -52,6 +48,8 @@ export type AcpSessionRuntimeOptions = {
   clientInfo?: InitializeRequest['clientInfo']
   peer?: AcpPeerOptions
   onPermission?: AcpPermissionHandler
+  /** Only opt in when onRequest presents and answers supported form schemas. */
+  handlesFormElicitation?: true
   /** Agent requests other than permissions. The handler owns its request: once `context.signal`
    *  aborts, send the agent's own cancelled reply, finish an answer already in progress, or throw
    *  (-32800). The runtime never answers for it; a request left unanswered ends at `close()`. */
@@ -103,11 +101,18 @@ export class AcpSessionRuntime {
   }
 
   initialize(): Promise<InitializeResponse> {
-    this.initialized ??= this.call(
+    this.initialized ??= requestAcpResponse(
+      this.peer,
       'initialize',
       {
         protocolVersion: ACP_PROTOCOL_VERSION,
-        clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+        clientCapabilities: {
+          fs: { readTextFile: false, writeTextFile: false },
+          terminal: false,
+          ...(this.options.handlesFormElicitation && this.options.onRequest
+            ? { elicitation: { form: {} } }
+            : {})
+        },
         ...(this.options.clientInfo === undefined ? {} : { clientInfo: this.options.clientInfo })
       } satisfies InitializeRequest,
       InitializeResponseSchema
@@ -132,7 +137,7 @@ export class AcpSessionRuntime {
 
   async authenticate(methodId: string): Promise<AuthenticateResponse> {
     await this.initialize()
-    return this.call('authenticate', { methodId }, AuthenticateResponseSchema)
+    return requestAcpResponse(this.peer, 'authenticate', { methodId }, AuthenticateResponseSchema)
   }
 
   /** A vendor extension method, answered as the agent sent it. Core methods have typed calls here,
@@ -149,7 +154,8 @@ export class AcpSessionRuntime {
    *  its id; this connection starts no session of its own. Ask only an agent that advertises it. */
   async forkSession(sessionId: string, cwd: string): Promise<string> {
     const params = { sessionId, cwd, mcpServers: [] }
-    return (await this.call('session/fork', params, ForkSessionResponseSchema)).sessionId
+    return (await requestAcpResponse(this.peer, 'session/fork', params, ForkSessionResponseSchema))
+      .sessionId
   }
 
   start(options: AcpSessionStartOptions): Promise<AcpSessionStarted> {
@@ -159,7 +165,7 @@ export class AcpSessionRuntime {
     this.starting ??= this.initialize()
       .then((initialized) =>
         setupAcpSession(initialized, options, (method, params, schema) =>
-          this.call(method, params, schema)
+          requestAcpResponse(this.peer, method, params, schema)
         )
       )
       .then((started) => {
@@ -178,7 +184,7 @@ export class AcpSessionRuntime {
       throw new Error('ACP prompt already in progress')
     }
     const params: PromptRequest = { sessionId: this.sessionId(), prompt, ...withMeta(meta) }
-    const response = this.call('session/prompt', params, PromptResponseSchema)
+    const response = requestAcpResponse(this.peer, 'session/prompt', params, PromptResponseSchema)
     this.activePrompt = response
     try {
       return await response
@@ -203,7 +209,7 @@ export class AcpSessionRuntime {
 
   async setMode(modeId: string, meta?: Meta): Promise<SetSessionModeResponse> {
     const params: SetSessionModeRequest = { sessionId: this.sessionId(), modeId, ...withMeta(meta) }
-    return this.call('session/set_mode', params, SetSessionModeResponseSchema)
+    return requestAcpResponse(this.peer, 'session/set_mode', params, SetSessionModeResponseSchema)
   }
 
   /** Dialect-owned control requests share this session's transport and bounded lifetime. */
@@ -220,7 +226,7 @@ export class AcpSessionRuntime {
       modelId,
       ...withMeta(meta)
     }
-    return this.call('session/set_model', params, SetSessionModelResponseSchema)
+    return requestAcpResponse(this.peer, 'session/set_model', params, SetSessionModelResponseSchema)
   }
   async setConfigOption(
     configId: SetSessionConfigOptionRequest['configId'],
@@ -243,7 +249,12 @@ export class AcpSessionRuntime {
             sessionId,
             ...withMeta(meta)
           } satisfies SetSessionConfigOptionRequest)
-    return this.call('session/set_config_option', request, SetSessionConfigOptionResponseSchema)
+    return requestAcpResponse(
+      this.peer,
+      'session/set_config_option',
+      request,
+      SetSessionConfigOptionResponseSchema
+    )
   }
 
   close(error?: Error): void {
@@ -260,24 +271,6 @@ export class AcpSessionRuntime {
       throw new Error('ACP session has not started')
     }
     return this.started.sessionId
-  }
-
-  private async call<T>(method: string, params: unknown, schema: z.ZodType<T>): Promise<T> {
-    const result = await this.peer.request(method, params, { timeoutMs: null }).catch((error) => {
-      if (error instanceof AcpAgentError && error.code === -32000) {
-        throw new AcpAuthRequiredError(error.message, error.data)
-      }
-      throw error
-    })
-    const parsed = schema.safeParse(result)
-    if (!parsed.success) {
-      throw new AcpInvalidResponseError(
-        `Invalid ACP response: ${method}`,
-        result,
-        parsed.error.issues
-      )
-    }
-    return parsed.data
   }
 
   private handleRequest(method: string, params: unknown, context: AcpRequestContext): unknown {

@@ -117,6 +117,7 @@ export async function acquireAcpStructuredSession(input: {
     },
     {
       clientInfo: { name: 'orca', version: '1' },
+      handlesFormElicitation: spec.formElicitation,
       ...(acquire.onOutput ? { onOutput: acquire.onOutput } : {}),
       ...(spec.signInPrompt ? { signInPrompt: spec.signInPrompt } : {}),
       onPermission: (request, context) => {

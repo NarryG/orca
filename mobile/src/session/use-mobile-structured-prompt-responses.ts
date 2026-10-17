@@ -12,6 +12,7 @@ import {
   actionableStructuredQuestion
 } from './mobile-structured-actionable-prompt'
 import {
+  decodeStructuredPromptToken,
   structuredApprovalResponseTarget,
   structuredQuestionResponseTarget
 } from './mobile-structured-agent-prompts'
@@ -78,7 +79,7 @@ export function useMobileStructuredPromptResponses(args: {
   const sendAnswers = useCallback(
     (
       target: { itemId: string; expectedRevision: number },
-      body: Pick<AgentJournalQuestionItem, 'questions'>,
+      body: Pick<AgentJournalQuestionItem, 'questions' | 'freeTextInput'>,
       answers: AgentSessionQuestionAnswer[]
     ): Promise<StructuredAgentSessionMutationResult<AgentSessionPromptResult> | null> => {
       const send = (fields: Record<string, unknown>) =>
@@ -110,6 +111,38 @@ export function useMobileStructuredPromptResponses(args: {
   const respondQuestion = useCallback(
     async (answer: string): Promise<boolean> => {
       const prompt = actionableStructuredQuestion(stateRef.current)
+      const decline = decodeStructuredPromptToken(answer)
+      if (decline?.kind === 'question-decline') {
+        if (
+          !prompt?.body.declineOptionId ||
+          decline.itemId !== prompt.itemId ||
+          decline.revision !== prompt.revision ||
+          decline.optionId !== prompt.body.declineOptionId
+        ) {
+          return false
+        }
+        const result = await mutate<AgentSessionPromptResult>(
+          'agentSession.respondToQuestion',
+          'agentSession.respondTo:question',
+          {
+            itemId: decline.itemId,
+            expectedRevision: decline.revision,
+            optionId: prompt.body.declineOptionId
+          }
+        )
+        if (result.status !== 'rejected') {
+          setCollected((current) =>
+            current?.sessionKey === sessionKey &&
+            current.draft.promptKey === groupedQuestionPromptKey(prompt.itemId, prompt.revision)
+              ? null
+              : current
+          )
+        }
+        if (result.status === 'unknown') {
+          onSendError('Answer unconfirmed — check chat before retrying')
+        }
+        return result.status === 'accepted'
+      }
       if (prompt?.body.questions) {
         const promptKey = groupedQuestionPromptKey(prompt.itemId, prompt.revision)
         const grouped = advanceGroupedQuestion({
@@ -154,7 +187,7 @@ export function useMobileStructuredPromptResponses(args: {
       const result = await sendAnswers(
         { itemId: target.itemId, expectedRevision: target.expectedRevision },
         // Grouped questions returned above, so this is a single question.
-        {},
+        prompt?.body ?? {},
         [target.answer]
       )
       if (!result) {
@@ -166,7 +199,7 @@ export function useMobileStructuredPromptResponses(args: {
       }
       return result.status === 'accepted'
     },
-    [groupedDraft, onSendError, sendAnswers, sessionKey, stateRef]
+    [groupedDraft, mutate, onSendError, sendAnswers, sessionKey, stateRef]
   )
 
   return { groupedDraft, respondPermission, respondQuestion }

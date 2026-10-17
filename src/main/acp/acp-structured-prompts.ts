@@ -58,7 +58,7 @@ export class AcpStructuredPrompts {
       }
       return Promise.resolve(translated.settled.reply)
     }
-    if (translated.presentation && !this.admits()) {
+    if (translated.presentation && (!this.admits() || context.signal.aborted)) {
       // No prompt of Orca's runs, or a Stop or steer is cutting it short: the agent hears its own
       // cancelled reply and no card opens.
       return Promise.resolve(translated.presentation.reply(null))
@@ -97,6 +97,10 @@ export class AcpStructuredPrompts {
         },
         { once: true }
       )
+      // Applying the row can synchronously trigger cancellation before the listener is installed.
+      if (context.signal.aborted && this.open.get(key) === entry) {
+        this.withdraw(entry)
+      }
     })
   }
 

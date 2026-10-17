@@ -62,16 +62,21 @@ export function NativeChatResolutionReceipt({
           >
             {heading ? <p>{heading}</p> : null}
             <p className="line-clamp-3 whitespace-pre-wrap break-words">
-              {answer.answer === ''
+              {answer.copy === 'declined'
                 ? translate(
-                    'components.native-chat.receipt.emptyAnswer',
-                    NATIVE_CHAT_RECEIPT_COPY.emptyAnswer
+                    'components.native-chat.receipt.declined',
+                    NATIVE_CHAT_RECEIPT_COPY.declined
                   )
-                : (answer.answer ??
-                  translate(
-                    'components.native-chat.receipt.unavailable',
-                    NATIVE_CHAT_RECEIPT_COPY.unavailable
-                  ))}
+                : answer.answer === ''
+                  ? translate(
+                      'components.native-chat.receipt.emptyAnswer',
+                      NATIVE_CHAT_RECEIPT_COPY.emptyAnswer
+                    )
+                  : (answer.answer ??
+                    translate(
+                      'components.native-chat.receipt.unavailable',
+                      NATIVE_CHAT_RECEIPT_COPY.unavailable
+                    ))}
             </p>
           </div>
         )

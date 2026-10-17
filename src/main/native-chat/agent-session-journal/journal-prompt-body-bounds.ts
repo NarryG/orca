@@ -96,6 +96,9 @@ export function boundJournalPromptBody(
             .map(boundPromptQuestion)
         }
       : {}),
+    ...(body.declineOptionId
+      ? { declineOptionId: boundPromptIdentifier(body.declineOptionId) }
+      : {}),
     ...(body.freeTextQuestionId
       ? { freeTextQuestionId: boundPromptIdentifier(body.freeTextQuestionId) }
       : {}),
@@ -134,6 +137,7 @@ function boundPromptOptions(
   return options.slice(0, MAX_JOURNAL_PROMPT_OPTIONS).map((option) => ({
     id: boundPromptIdentifier(option.id),
     label: boundInlineText(option.label, JOURNAL_PROMPT_OPTION_LIMITS).text,
+    ...(option.exclusive === undefined ? {} : { exclusive: option.exclusive }),
     ...(option.description === undefined
       ? {}
       : { description: boundInlineText(option.description, JOURNAL_PROMPT_OPTION_LIMITS).text })

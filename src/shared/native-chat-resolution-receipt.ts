@@ -11,6 +11,7 @@ import type { NativeChatAskRowSubject } from './native-chat-ask-row'
 /** Desktop's fallbacks for its translations; the phone's words. */
 export const NATIVE_CHAT_RECEIPT_COPY = {
   emptyAnswer: 'Empty answer',
+  declined: 'Declined request',
   unavailable: 'Selected answer unavailable',
   resolved: 'Resolved',
   cancelled: 'Cancelled',
@@ -19,8 +20,12 @@ export const NATIVE_CHAT_RECEIPT_COPY = {
 } as const
 
 export type NativeChatResolvedPrompt = AgentJournalApprovalItem | AgentJournalQuestionItem
-/** `answer` is '' for an explicitly empty text answer and null when the answer cannot be read. */
-export type NativeChatReceiptAnswer = { question: string | null; answer: string | null }
+/** Fixed copy never occupies user text; '' is an empty answer, null has no text. */
+export type NativeChatReceiptAnswer = {
+  question: string | null
+  answer: string | null
+  copy?: 'declined'
+}
 
 export function nativeChatReceiptAnswers(
   body: NativeChatResolvedPrompt
@@ -30,6 +35,9 @@ export function nativeChatReceiptAnswers(
   }
   const selected = body.resolution.selectedOptionId
   if (body.kind === 'question') {
+    if (body.declineOptionId && selected === body.declineOptionId) {
+      return [{ question: null, answer: null, copy: 'declined' }]
+    }
     // Rows written before hosts recorded structured answers carry only the packed form.
     const answers =
       body.resolution.answers ??

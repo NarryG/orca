@@ -179,6 +179,8 @@ export type AgentJournalPromptOption = {
   id: string
   label: string
   description?: string
+  /** Selecting this option excludes every other answer to the question. */
+  exclusive?: boolean
 }
 
 export type AgentJournalFreeTextInput = {
@@ -246,6 +248,8 @@ export type AgentJournalQuestionItem = {
   /** Present when the provider accepts an answer outside the offered options. */
   freeTextQuestionId?: string
   freeTextInput?: AgentJournalFreeTextInput
+  /** Optional whole-form refusal action, separate from answers and turn cancellation. */
+  declineOptionId?: string
   resolution: AgentJournalResolution
 }
 

@@ -10,6 +10,12 @@ import type { AcpAgentError } from '../acp-errors'
 import type { AgentSessionOptionChoice } from '../../../shared/agent-session-wire'
 import type { ModelInfo, ToolCallUpdate } from '../generated/acp-protocol.generated'
 
+export const pendingAcpResolution = {
+  state: 'pending',
+  selectedOptionId: null,
+  resolvedBy: null,
+  resolvedAt: null
+} as const
 export type AcpRequestPresentation = {
   body: ProviderTimelineRequestBody
   reply(response: AgentSessionPromptResponse | null): unknown

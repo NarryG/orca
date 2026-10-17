@@ -220,6 +220,8 @@ export async function openAcpAdapterRig(
       return child
     },
     readProcessStartTime: async () => 1_700_000_000_000,
+    // Scripted children supply their own identity, not the native Windows process table.
+    isWindowsProcessStartTimeAvailable: () => true,
     dataDirectory: join(tmpdir(), 'orca-acp-adapter-rig'),
     onEvent: (event) => lifecycle.push(event),
     onDispatchSettledLate: (settlement) => settled.push(settlement),

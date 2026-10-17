@@ -1,4 +1,7 @@
-import { AGENT_JOURNAL_THREAD_SCOPE } from '../../../shared/agent-session-journal-types'
+import {
+  AGENT_JOURNAL_THREAD_SCOPE,
+  type AgentJournalQuestion
+} from '../../../shared/agent-session-journal-types'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -6,7 +9,15 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import { agentJournalItemKey } from '../../../shared/agent-session-journal-item-key'
 import { computeAgentSessionPayloadFingerprint } from '../../../shared/agent-session-mutation-envelope'
 import type { AgentSessionMutationEnvelope } from '../../../shared/agent-session-wire'
-import { encodeAgentSessionQuestionAnswers } from '../../../shared/agent-session-question-answer'
+import {
+  decodeAgentSessionQuestionAnswers,
+  encodeAgentSessionQuestionAnswers
+} from '../../../shared/agent-session-question-answer'
+import {
+  MAX_RESPONSE_OPTION_ID_LENGTH,
+  RespondToQuestionParams
+} from '../../../shared/rpc-contract/structured-agent-session-params'
+import { acpFormPresentation } from '../../acp/acp-form-elicitation'
 import type { AgentSessionRecordStore } from '../../runtime/agent-session-record-store'
 import { openTestAgentSessionRecordStore } from '../../runtime/agent-session-record-store-test-harness'
 import type {
@@ -23,7 +34,10 @@ import {
   hostTestOperationId,
   resetHostTestOperationIds
 } from './structured-agent-session-host-test-data'
-import { openTestJournalHostDatabase } from '../agent-session-journal/journal-host-database-test-support'
+import {
+  closeTestJournalHostDatabase,
+  openTestJournalHostDatabase
+} from '../agent-session-journal/journal-host-database-test-support'
 import { createStructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { codexProviderHandle } from '../../../shared/agent-session-provider-handle-encoding'
 import { NO_STRUCTURED_AGENTS } from './structured-agent-session-adapter-router-test-support'
@@ -70,7 +84,10 @@ function adapter(): StructuredAgentSessionAdapter {
   }
 }
 
-async function seedGroupedQuestion(): Promise<{ itemId: string; revision: number }> {
+async function seedGroupedQuestion(
+  declineOptionId?: string,
+  questions?: AgentJournalQuestion[]
+): Promise<{ itemId: string; revision: number }> {
   const identity = { provider: 'codex' as const, threadId: THREAD, turnId: 'turn-1', ordinal: 100 }
   const events = acquire.mock.calls.at(-1)?.[0].events
   if (!events) {
@@ -82,14 +99,16 @@ async function seedGroupedQuestion(): Promise<{ itemId: string; revision: number
       kind: 'question',
       question: '2 grouped questions from Claude',
       options: [],
-      questions: [
+      ...(declineOptionId ? { declineOptionId } : {}),
+      questions: questions ?? [
         {
           id: 'q1',
           question: 'Targets',
           multiSelect: true,
           options: [
             { id: 'target-web', label: 'Web' },
-            { id: 'target-mobile', label: 'Mobile' }
+            { id: 'target-mobile', label: 'Mobile' },
+            { id: 'target-none', label: 'None', exclusive: true }
           ]
         },
         {
@@ -149,10 +168,65 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await host.flushAllStreamedEvents()
+  closeTestJournalHostDatabase(root)
   await rm(root, { recursive: true, force: true })
 })
 
 describe('grouped question admission', () => {
+  it.each([undefined, 'acp-form-decline'])(
+    'admits whole-form decline only when advertised: %s',
+    async (declineOptionId) => {
+      await host.attach(CALLER, attachParams())
+      const prompt = await seedGroupedQuestion(declineOptionId)
+      const fields = {
+        itemId: prompt.itemId,
+        expectedRevision: prompt.revision,
+        optionId: 'acp-form-decline'
+      }
+      const result = await host.respondToPrompt(CALLER, {
+        envelope: envelope('agentSession.respondTo:question', fields),
+        kind: 'question',
+        ...fields
+      })
+      expect(result.ok).toBe(Boolean(declineOptionId))
+      if (declineOptionId) {
+        expect(result).toMatchObject({
+          value: { resolution: { state: 'resolved', selectedOptionId: declineOptionId } }
+        })
+      } else {
+        expect(answerPrompt).not.toHaveBeenCalled()
+      }
+    }
+  )
+
+  it.each([['target-none'], ['target-web', 'target-none']])(
+    'honors persisted exclusive choices for %j',
+    async (...optionIds) => {
+      await host.attach(CALLER, attachParams())
+      const prompt = await seedGroupedQuestion()
+      const fields = {
+        itemId: prompt.itemId,
+        expectedRevision: prompt.revision,
+        answers: [
+          { questionId: 'q1', optionIds },
+          { questionId: 'q2', optionIds: [], other: 'SSH host' }
+        ]
+      }
+      const result = await host.respondToPrompt(CALLER, {
+        envelope: envelope('agentSession.respondTo:question', fields),
+        kind: 'question',
+        ...fields
+      })
+      expect(result.ok).toBe(optionIds.length === 1)
+      if (optionIds.length > 1) {
+        expect(result).toMatchObject({
+          refusal: { code: 'agent_session_operation_invalid' }
+        })
+        expect(answerPrompt).not.toHaveBeenCalled()
+      }
+    }
+  )
+
   it('reads the packed answer an older client sends into structured answers', async () => {
     const attached = await host.attach(CALLER, attachParams())
     expect(attached.ok).toBe(true)
@@ -174,6 +248,57 @@ describe('grouped question admission', () => {
     })
     expect(answerPrompt).toHaveBeenCalledWith(
       expect.objectContaining({ itemId: prompt.itemId, response: { kind: 'answers', answers } })
+    )
+  })
+
+  it('admits a packed maximum-capacity ACP form answer through the RPC schema and host', async () => {
+    const choices = Array.from({ length: 63 }, (_, index) => ({ const: `target-${index}` }))
+    const keys = ['first', 'second', 'third', 'fourth']
+    const presentation = acpFormPresentation({
+      sessionId: THREAD,
+      mode: 'form',
+      message: 'Select targets',
+      requestedSchema: {
+        type: 'object',
+        properties: Object.fromEntries(
+          keys.map((key) => [key, { type: 'array', items: { anyOf: choices } }])
+        ),
+        required: keys
+      }
+    })
+    if (presentation.body.kind !== 'question' || !presentation.body.questions) {
+      throw new Error('ACP form did not present grouped questions')
+    }
+    const questions = presentation.body.questions
+    expect(questions).toHaveLength(4)
+    for (const question of questions) {
+      expect(question.options).toHaveLength(64)
+    }
+    const answers = questions.map((question) => ({
+      questionId: question.id,
+      optionIds: question.options.filter((option) => !option.exclusive).map((option) => option.id)
+    }))
+    const optionId = encodeAgentSessionQuestionAnswers(answers)
+    expect(optionId.length).toBeGreaterThan(MAX_RESPONSE_OPTION_ID_LENGTH)
+    expect(decodeAgentSessionQuestionAnswers(optionId)).toEqual(answers)
+    expect(presentation.reply({ kind: 'option', optionId })).toEqual({
+      action: 'accept',
+      content: Object.fromEntries(keys.map((key) => [key, choices.map((choice) => choice.const)]))
+    })
+    expect((await host.attach(CALLER, attachParams())).ok).toBe(true)
+    const prompt = await seedGroupedQuestion(presentation.body.declineOptionId, questions)
+    const fields = { itemId: prompt.itemId, expectedRevision: prompt.revision, optionId }
+    const params = RespondToQuestionParams.parse({
+      envelope: envelope('agentSession.respondTo:question', fields),
+      ...fields
+    })
+    const result = await host.respondToPrompt(CALLER, { kind: 'question', ...params })
+    expect(result).toMatchObject({
+      ok: true,
+      value: { resolution: { state: 'resolved', selectedOptionId: optionId, answers } }
+    })
+    expect(answerPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({ response: { kind: 'answers', answers } })
     )
   })
 

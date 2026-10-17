@@ -17,15 +17,16 @@ afterEach(() => {
   container.remove()
 })
 
-function render(question: AgentJournalQuestion) {
+function render(question: AgentJournalQuestion | AgentJournalQuestion[], declineOptionId?: string) {
   const onAnswer = vi.fn()
   const onCancel = vi.fn()
   act(() =>
     root.render(
       <NativeChatStructuredQuestionCard
-        questions={[question]}
+        questions={Array.isArray(question) ? question : [question]}
         onAnswer={onAnswer}
         onCancel={onCancel}
+        declineOptionId={declineOptionId}
       />
     )
   )
@@ -41,6 +42,16 @@ function submit(): void {
   act(() => button.dispatchEvent(new MouseEvent('click', { bubbles: true })))
 }
 
+function clickOption(label: string): void {
+  const button = [...container.querySelectorAll('button[aria-pressed]')].find(
+    (node) => node.textContent?.replace(/^\d+\s*/, '').trim() === label
+  )
+  if (!button) {
+    throw new Error(`Missing option: ${label}`)
+  }
+  act(() => button.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+}
+
 const input: AgentJournalQuestion = {
   id: 'text',
   question: 'Enter text',
@@ -51,6 +62,39 @@ const input: AgentJournalQuestion = {
 }
 
 describe('structured extension question cards', () => {
+  it('keeps exclusive structured choices separate when encoding their option ids', () => {
+    const { onAnswer } = render({
+      id: 'targets',
+      question: 'Choose targets',
+      multiSelect: true,
+      options: [
+        { id: 'web', label: 'Web' },
+        { id: 'mobile', label: 'Mobile' },
+        { id: 'none', label: 'No selections', exclusive: true }
+      ]
+    })
+    clickOption('Web')
+    clickOption('Mobile')
+    clickOption('No selections')
+    submit()
+    expect(onAnswer).toHaveBeenCalledWith({
+      kind: 'answers',
+      answers: [{ questionId: 'targets', optionIds: ['none'] }]
+    })
+  })
+
+  it('offers decline only for forms and delivers it without requiring field answers or cancelling', () => {
+    render(input)
+    expect(container.textContent).not.toContain('Decline request')
+    const { onAnswer, onCancel } = render(input, 'acp-form-decline')
+    const decline = [...container.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === 'Decline request'
+    )!
+    act(() => decline.click())
+    expect(onAnswer).toHaveBeenCalledWith({ kind: 'option', optionId: 'acp-form-decline' })
+    expect(onCancel).not.toHaveBeenCalled()
+  })
+
   it('submits an empty input as an answer', () => {
     const { onAnswer } = render(input)
     expect(container.querySelector('input')?.placeholder).toBe('Provider placeholder')
@@ -101,6 +145,54 @@ describe('structured extension question cards', () => {
       answers: [{ questionId: 'text', optionIds: [], other: 'prefill, then edited\nsecond line' }]
     })
   })
+
+  it.each([false, true])(
+    'submits optional blank choices without cancelling or attaching blank text to a preset: %s',
+    (pickLast) => {
+      const { onAnswer, onCancel } = render([
+        {
+          id: 'first',
+          question: 'First?',
+          options: [{ id: 'alpha', label: 'Alpha' }],
+          multiSelect: false,
+          freeTextQuestionId: 'first',
+          freeTextInput: { allowEmpty: true }
+        },
+        {
+          id: 'second',
+          question: 'Second?',
+          options: [{ id: 'beta', label: 'Beta' }],
+          multiSelect: false,
+          freeTextQuestionId: 'second',
+          freeTextInput: { allowEmpty: true }
+        }
+      ])
+      const advance = () => {
+        const button = [...container.querySelectorAll('button')].find((node) =>
+          ['Next', 'Skip', 'Submit'].includes(node.textContent?.trim() ?? '')
+        )
+        if (!button) {
+          throw new Error('Missing question action')
+        }
+        act(() => button.click())
+      }
+      advance()
+      if (pickLast) {
+        clickOption('Beta')
+      }
+      advance()
+      expect(onAnswer).toHaveBeenCalledWith({
+        kind: 'answers',
+        answers: [
+          { questionId: 'first', optionIds: [], other: '' },
+          pickLast
+            ? { questionId: 'second', optionIds: ['beta'] }
+            : { questionId: 'second', optionIds: [], other: '' }
+        ]
+      })
+      expect(onCancel).not.toHaveBeenCalled()
+    }
+  )
 
   it('keeps legacy empty input disabled', () => {
     const { onAnswer } = render({ ...input, freeTextInput: undefined })

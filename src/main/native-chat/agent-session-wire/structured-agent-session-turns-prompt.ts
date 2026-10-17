@@ -56,6 +56,12 @@ function readPromptChoice(
       ? { response: { kind: 'option', optionId }, selectedOptionId: optionId }
       : null
   }
+  if (prompt.declineOptionId && input.optionId === prompt.declineOptionId && !input.answers) {
+    return {
+      response: { kind: 'option', optionId: prompt.declineOptionId },
+      selectedOptionId: prompt.declineOptionId
+    }
+  }
   const answers =
     input.answers ??
     (input.optionId === undefined

@@ -19,6 +19,9 @@ export type MobileChatQuestion = {
   optionTokens: (string | null)[]
   /** Per-option secondary text from structured prompts, parallel to `options`. */
   optionDescriptions?: (string | undefined)[]
+  optionExclusive?: boolean[]
+  /** Opaque whole-form refusal response, distinct from cancellation. */
+  declineToken?: string
   /** Opaque prefix used when free-text answers must target a specific prompt. */
   freeTextToken?: string
   freeTextInput?: AgentJournalFreeTextInput
