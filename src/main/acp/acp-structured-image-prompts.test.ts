@@ -27,28 +27,38 @@ const withImage: AgentJournalMessageItem = {
 }
 
 describe('ACP image prompts', () => {
-  it('sends an image to an agent whose row offers images and whose start advertised them', async () => {
-    const rig = await openAcpAdapterRig({
-      spec: acpLaunchSpecFor('opencode')!,
-      initialize: { agentCapabilities: { loadSession: true, promptCapabilities: { image: true } } }
-    })
-    await rig.acquire()
-    await expect(
-      rig.adapter.dispatch({ sessionId: SESSION, clientMessageId: 'm1', body: withImage, fence: 1 })
-    ).resolves.toEqual({ state: 'admitted' })
-    expect((await rig.frame('session/prompt')).params).toMatchObject({
-      prompt: [
-        { type: 'image', mimeType: 'image/png', data: DATA },
-        { type: 'text', text: 'what is this?' }
-      ]
-    })
-    await expect(acceptsImages(rig)).resolves.toBe(true)
-    // The start's answer, not a second handshake.
-    expect(rig.sent('initialize')).toHaveLength(1)
-  })
+  it.each(['opencode', 'omp'])(
+    'sends an image to %s when its start advertises images',
+    async (agent) => {
+      const rig = await openAcpAdapterRig({
+        spec: acpLaunchSpecFor(agent)!,
+        initialize: {
+          agentCapabilities: { loadSession: true, promptCapabilities: { image: true } }
+        }
+      })
+      await rig.acquire()
+      await expect(
+        rig.adapter.dispatch({
+          sessionId: SESSION,
+          clientMessageId: 'm1',
+          body: withImage,
+          fence: 1
+        })
+      ).resolves.toEqual({ state: 'admitted' })
+      expect((await rig.frame('session/prompt')).params).toMatchObject({
+        prompt: [
+          { type: 'image', mimeType: 'image/png', data: DATA },
+          { type: 'text', text: 'what is this?' }
+        ]
+      })
+      await expect(acceptsImages(rig)).resolves.toBe(true)
+      // The start's answer, not a second handshake.
+      expect(rig.sent('initialize')).toHaveLength(1)
+    }
+  )
 
-  it('refuses the message, sending nothing, when the agent did not advertise images', async () => {
-    const rig = await openAcpAdapterRig({ spec: acpLaunchSpecFor('opencode')! })
+  it.each(['opencode', 'omp'])('refuses images when %s does not advertise them', async (agent) => {
+    const rig = await openAcpAdapterRig({ spec: acpLaunchSpecFor(agent)! })
     await rig.acquire()
     await expect(
       rig.adapter.dispatch({ sessionId: SESSION, clientMessageId: 'm1', body: withImage, fence: 1 })

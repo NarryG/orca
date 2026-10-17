@@ -135,14 +135,20 @@ export function messageText(body: AgentJournalItemBody | undefined): string | un
 }
 
 const journals = createTrackedJournalOpener()
-const cleanups: (() => Promise<void>)[] = []
+const cleanups: { close: () => void; root?: string }[] = []
 
 /** Call from `afterEach`. */
 export async function closeProviderTimelineRigs(): Promise<void> {
-  for (const cleanup of cleanups.splice(0)) {
-    await cleanup()
+  const rigs = cleanups.splice(0)
+  for (const rig of rigs) {
+    rig.close()
   }
   await journals.closeAll()
+  for (const rig of rigs) {
+    if (rig.root) {
+      await rm(rig.root, { recursive: true, force: true })
+    }
+  }
 }
 
 /** An assembler whose sink binds to the rig's journal only when `bind` is called, as a lane that
@@ -172,9 +178,11 @@ export function openUnboundProviderTimelineAssembler(
     schedule: () => () => {},
     ...overrides
   })
-  cleanups.push(async () => {
-    assembler.dispose()
-    deferred.close()
+  cleanups.push({
+    close: () => {
+      assembler.dispose()
+      deferred.close()
+    }
   })
   return {
     assembler,
@@ -242,10 +250,7 @@ export async function openProviderTimelineRig(
   const journal = await journals.open(journalOptions)
   const deferred = createDeferredStructuredAgentSessionEventSink(testEventSinkLogging())
   deferred.bind({ journal, fence: 1, publish: () => {} })
-  cleanups.push(async () => {
-    deferred.close()
-    await rm(root, { recursive: true, force: true })
-  })
+  cleanups.push({ close: () => deferred.close(), root })
   const sink = providerTimelineSink(deferred.sink)
   if (!sink) {
     throw new Error('the deferred sink offers transitions')
