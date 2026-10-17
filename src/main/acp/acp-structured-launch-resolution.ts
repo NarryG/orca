@@ -302,7 +302,7 @@ function nothingExchangedOn(
     return false
   }
   if (!load) {
-    return true
+    return false
   }
   if (load.damage || load.newer) {
     return false

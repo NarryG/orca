@@ -29,6 +29,8 @@ When Claude shows an **AskUserQuestion** (or similar structured permission/quest
 
 Chat UI ships on desktop for supported local and remote (paired server) agent sessions. The [mobile companion](/docs/mobile) reuses chat-style transcript patterns for the same paired sessions.
 
+Orca uses saved native session history on the execution host to reconcile uncertain OMP sends. Missing or unreadable history leaves delivery uncertain rather than treating it as a failed send.
+
 <Callout title="Experimental">
   Transcript fidelity, streaming, and terminal parity are still under active tuning. Prefer the raw
   TUI when you need every OSC/status detail.

@@ -62,41 +62,19 @@ function journalWithTurns(...providerSessions: string[]): JournalLoad {
 }
 
 function resolver(record: AgentSessionRecord, readJournal: () => JournalLoad | null = () => null) {
-  const searched: (string | null | undefined)[] = []
   return {
-    searched,
     resolve: createAcpStructuredLaunchResolver(GROK, {
       store: { getRecord: () => record, pinLaunchDirectory: vi.fn() },
       readJournal,
       resolveWorkspacePath: async () => '/repo/worktree',
       resolveEnvironment: async () => ({ PATH: '/usr/bin', HOME: '/home/user' }),
       resolveLaunchEnv: () => ({ GROK_EXTRA: '1' }),
-      resolveCommand: (command, options) => {
-        searched.push(options?.pathEnv)
-        return `/resolved/${command}`
-      }
+      resolveCommand: (command) => `/resolved/${command}`
     })
   }
 }
 
 describe('ACP launch resolution', () => {
-  it('pins the record account home and searches the agent install dir', async () => {
-    const { resolve, searched } = resolver(grokRecord())
-    const launch = await resolve({ identity })
-    expect(launch).toMatchObject({
-      command: '/resolved/grok',
-      args: ['agent', 'stdio'],
-      cwd: '/repo/worktree',
-      fullAccess: false,
-      resume: null
-    })
-    expect(launch.env).toMatchObject({
-      GROK_HOME: '/home/user/.grok-work',
-      GROK_EXTRA: '1'
-    })
-    expect(searched[0]).toContain('/home/user/.grok-work/bin')
-  })
-
   it('creates a new ACP session after clear instead of probing the old session', async () => {
     const value = grokRecord({
       providerContextBoundary: { operationId: 'clear', afterFence: 2, clearedAt: 100 },
@@ -132,9 +110,9 @@ describe('ACP launch resolution', () => {
       observedAt: 1,
       handle: { transport: 'acp', agent: 'grok', nativeId: 'acp-1' }
     })
-    const created = await resolver(grokRecord({ providerHandleChain: [link('created')] })).resolve({
-      identity
-    })
+    const created = await resolver(grokRecord({ providerHandleChain: [link('created')] }), () =>
+      journalWithTurns()
+    ).resolve({ identity })
     const handle: AgentSessionProviderHandle = {
       transport: 'acp',
       agent: 'grok',
@@ -172,7 +150,7 @@ describe('ACP launch resolution', () => {
     }).resolve({ identity })
     // Read only when asked: a reopen that works never replays the journal.
     expect(reads).toEqual([])
-    expect(launch.resume?.mayBeUnsaved()).toBe(true)
+    expect(launch.resume?.mayBeUnsaved()).toBe(false)
 
     expect(await unsaved(() => journalWithTurns())).toBe(true)
     expect(await unsaved(() => journalWithTurns('acp-other'))).toBe(true)

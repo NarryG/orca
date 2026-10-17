@@ -10,6 +10,7 @@ import { directoryAccountBinding, type AcpAccountBinding } from './acp-account-b
 import { openCodeAcpAccountBinding } from '../opencode/opencode-structured-account-home'
 import { scrubOpenCodeAcpEnvironment } from '../opencode/opencode-acp-environment'
 import { openCodeStoredUserMessagesReader } from '../opencode/opencode-acp-stored-messages'
+import { ompStoredUserMessagesReader } from '../omp/omp-acp-stored-messages'
 import type { AcpStoredUserMessagesReader } from './acp-recovery-history'
 import { isStableCliVersionFrom, isStableCliVersionOnLine } from '../agent-cli-version-probe'
 import type { TuiAgent } from '../../shared/tui-agent'
@@ -209,6 +210,7 @@ const OMP_LAUNCH_SPEC: AcpLaunchSpec = {
   installDirectories: () => [],
   // Stable releases from 17.0.5, the release verified to serve `omp acp`.
   supportsVersion: (version) => isStableCliVersionFrom(version, '17.0.5'),
+  readStoredUserMessages: ompStoredUserMessagesReader(),
   // `omp models --json` lists every model without the `enabledModels` filter a chat applies, so it
   // could offer models a chat refuses; its chats' own listings fill the catalog instead.
   modelDiscovery: {
