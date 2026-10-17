@@ -6,6 +6,7 @@ import type { AgentType } from './agent-status-types'
 import type { SessionOptionDescriptor, SessionOptionValue } from './native-chat-session-options'
 import type { SlashCommandSuggestion } from './native-chat-slash-commands'
 import type { AgentSessionConversationCommand } from './agent-session-conversation-command'
+import type { AgentSessionSlashCommand } from './agent-session-wire'
 
 const MODEL_COMMAND: SlashCommandSuggestion = {
   name: 'model',
@@ -34,6 +35,7 @@ export type StructuredAgentSessionComposerOptions = {
   invokeAction: (id: string) => Promise<boolean>
   setOption: (id: string, value: SessionOptionValue) => Promise<boolean>
   conversationCommands?: readonly AgentSessionConversationCommand[]
+  sessionCommands?: readonly AgentSessionSlashCommand[]
   runConversationCommand?: (
     command: AgentSessionConversationCommand
   ) => Promise<Omit<StructuredAgentSessionCommandOutcome, 'handled'>>
@@ -91,28 +93,26 @@ export function structuredSlashCommands(
   ]
 }
 
-/** Wider than the offered menu on purpose: a TUI-only command still has to be
- *  claimed here and answered, or a hand-typed `/clear` reaches the model as
- *  literal prompt text. Commands the agent itself implements are deliberately
- *  absent — the profile unclaims those so they pass through as text. */
-function structuredRecognizedCommands(agent: AgentType): readonly SlashCommandSuggestion[] {
-  return [
-    ...STRUCTURED_AGENT_SESSION_SLASH_COMMANDS,
-    ...CONVERSATION_COMMANDS,
-    ...getHostClaimedNativeChatCommands(agent)
-  ]
-}
-
-/** Whether the chat host, rather than the agent, owns this command. Callers also
- *  use it to refuse attachments: a host command sends no message, so attachments
- *  would be silently dropped, whereas a pass-through command is a real send. */
+/** Host-owned commands take precedence; session-reported commands otherwise
+ *  reach the agent, including names also present in the curated TUI catalog. */
 export function isStructuredAgentSessionComposerCommand(
   text: string,
-  agent: AgentType = 'codex'
+  agent: AgentType = 'codex',
+  sessionCommands?: readonly AgentSessionSlashCommand[]
 ): boolean {
   const command = commandParts(text)
-  return Boolean(
-    command && structuredRecognizedCommands(agent).some((entry) => entry.name === command.name)
+  if (!command) {
+    return false
+  }
+  if (
+    STRUCTURED_AGENT_SESSION_SLASH_COMMANDS.some((entry) => entry.name === command.name) ||
+    CONVERSATION_COMMANDS.some((entry) => entry.name === command.name)
+  ) {
+    return true
+  }
+  return (
+    !sessionCommands?.some((entry) => entry.name === command.name) &&
+    getHostClaimedNativeChatCommands(agent).some((entry) => entry.name === command.name)
   )
 }
 
@@ -178,7 +178,10 @@ export async function dispatchStructuredAgentSessionComposerCommand(
       error: null
     }
   }
-  if (!command || !isStructuredAgentSessionComposerCommand(text, controller.agent)) {
+  if (
+    !command ||
+    !isStructuredAgentSessionComposerCommand(text, controller.agent, controller.sessionCommands)
+  ) {
     return { handled: false, accepted: false, error: null }
   }
   if (command.name === 'clear' || command.name === 'compact') {

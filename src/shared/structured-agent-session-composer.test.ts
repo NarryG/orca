@@ -5,6 +5,7 @@ import {
   structuredAgentSessionGoalObjective,
   structuredSlashCommands
 } from './structured-agent-session-composer'
+import { sessionSlashCommandSuggestions } from './native-chat-slash-commands'
 
 describe('structuredSlashCommands', () => {
   const hostController = {
@@ -151,6 +152,49 @@ describe('agent-implemented commands pass through to the agent', () => {
     setOption: async () => true
   }
   const PASSED_THROUGH = { handled: false, accepted: false, error: null }
+
+  it('passes the reported /fast command to the session instead of refusing its menu row', async () => {
+    const sessionCommands = [
+      {
+        name: 'fast',
+        kind: 'command' as const,
+        description: 'Toggle fast mode',
+        argumentHint: '[on|ultra|off|status]'
+      }
+    ]
+    const sessionController = { ...controller, agent: 'omp' as const, sessionCommands }
+    const [offered] = sessionSlashCommandSuggestions('omp', sessionCommands)
+    expect(offered?.name).toBe('fast')
+    expect(
+      await dispatchStructuredAgentSessionComposerCommand(`/${offered?.name}`, sessionController)
+    ).toEqual(PASSED_THROUGH)
+  })
+
+  it('keeps the TUI guard when a command is absent or withdrawn from the session report', async () => {
+    for (const sessionCommands of [undefined, [], [{ name: 'tools', kind: 'command' as const }]]) {
+      expect(
+        await dispatchStructuredAgentSessionComposerCommand('/fast', {
+          ...controller,
+          agent: 'omp',
+          sessionCommands
+        })
+      ).toMatchObject({ handled: true, error: expect.stringContaining('not available') })
+    }
+  })
+
+  it.each(['model', 'effort', 'clear', 'compact'] as const)(
+    'keeps /%s host-owned even when the session advertises it',
+    async (name) => {
+      const sessionCommands = [{ name, kind: 'command' as const }]
+      expect(isStructuredAgentSessionComposerCommand(`/${name}`, 'omp', sessionCommands)).toBe(true)
+      const outcome = await dispatchStructuredAgentSessionComposerCommand(`/${name}`, {
+        ...controller,
+        agent: 'omp',
+        sessionCommands
+      })
+      expect(outcome.handled).toBe(true)
+    }
+  )
 
   // Claude's harness runs a slash command it finds in the message text, so
   // claiming these answered "not available" for commands that do work.
