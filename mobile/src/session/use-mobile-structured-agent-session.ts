@@ -184,6 +184,7 @@ export function useMobileStructuredAgentSession(
       stopPressed: stopPress.pressed
     }) === 'stopping'
   const stopRequestInFlight = isWorking && stopPress.pressed
+  const sessionCommands = enabled && connected ? (state.commands ?? undefined) : undefined
   const sendWithOutcome = useMobileStructuredSendWithOutcome({
     agent,
     client,
@@ -197,6 +198,7 @@ export function useMobileStructuredAgentSession(
     hold: sends.hold,
     commandPending: commandPendingRef,
     controller: sendController,
+    sessionCommands,
     onSendError,
     carriesOptions: hostSupport?.sendOptions === true
   })
@@ -283,6 +285,7 @@ export function useMobileStructuredAgentSession(
 
   return {
     ...options,
+    sessionCommands,
     visualSource,
     imagePreviewsByMessageId: sends.imagePreviewsByMessageId,
     session: {

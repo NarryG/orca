@@ -60,6 +60,7 @@ export function useMobileStructuredSendWithOutcome(args: {
     StructuredAgentSessionComposerOptions,
     'snapshot' | 'setOption' | 'invokeAction' | 'conversationCommands'
   >
+  sessionCommands?: StructuredAgentSessionComposerOptions['sessionCommands']
   onSendError: MobileNativeChatSendErrorReporter
   /** Each send carries the model and effort the picker shows; an older host takes neither. */
   carriesOptions?: boolean
@@ -82,6 +83,7 @@ export function useMobileStructuredSendWithOutcome(args: {
     queueCapable,
     carriesOptions,
     sessionId,
+    sessionCommands,
     stateRef,
     stopping
   } = args
@@ -114,7 +116,7 @@ export function useMobileStructuredSendWithOutcome(args: {
         sessionId,
         fence: currentFence,
         pending: commandPending,
-        controller: { agent: agent ?? undefined, ...controller },
+        controller: { agent: agent ?? undefined, ...controller, sessionCommands },
         busy: () =>
           actionableStructuredApproval(stateRef.current) ||
           actionableStructuredQuestion(stateRef.current)
@@ -183,6 +185,7 @@ export function useMobileStructuredSendWithOutcome(args: {
       queueCapable,
       carriesOptions,
       sessionId,
+      sessionCommands,
       stateRef,
       stopping
     ]

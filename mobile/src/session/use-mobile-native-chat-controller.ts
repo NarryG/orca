@@ -219,6 +219,7 @@ export function useMobileNativeChatController(args: {
 
   const structuredNativeChatSend = useMobileStructuredNativeChatSendBridge({
     agent: activeChatResolution?.agent,
+    sessionCommands: structuredNativeChat.sessionCommands,
     sendStructured: structuredNativeChat.sendWithOutcome,
     captureSendOrigin,
     clearDraftForSend,

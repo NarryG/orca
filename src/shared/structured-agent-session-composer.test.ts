@@ -152,6 +152,40 @@ describe('agent-implemented commands pass through to the agent', () => {
   }
   const PASSED_THROUGH = { handled: false, accepted: false, error: null }
 
+  it('passes an advertised OMP fast command to the native session', async () => {
+    expect(
+      await dispatchStructuredAgentSessionComposerCommand('/fast status', {
+        ...controller,
+        agent: 'omp',
+        sessionCommands: [{ name: 'fast', kind: 'command' }]
+      })
+    ).toEqual(PASSED_THROUGH)
+  })
+
+  it('does not infer native fast support from the OMP terminal catalog', async () => {
+    expect(
+      (
+        await dispatchStructuredAgentSessionComposerCommand('/fast', {
+          ...controller,
+          agent: 'omp',
+          sessionCommands: []
+        })
+      ).handled
+    ).toBe(true)
+  })
+
+  it('keeps OMP terminal-only commands claimed when fast is advertised', async () => {
+    expect(
+      (
+        await dispatchStructuredAgentSessionComposerCommand('/git', {
+          ...controller,
+          agent: 'omp',
+          sessionCommands: [{ name: 'fast', kind: 'command' }]
+        })
+      ).handled
+    ).toBe(true)
+  })
+
   // Claude's harness runs a slash command it finds in the message text, so
   // claiming these answered "not available" for commands that do work.
   it.each(['init', 'review', 'help'] as const)(
