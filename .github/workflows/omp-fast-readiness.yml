@@ -1,0 +1,103 @@
+name: OMP fast candidate readiness
+on:
+  push:
+    branches:
+      - validation/omp-fast-readiness-d0d3edd0f8-ubuntu
+permissions:
+  contents: read
+jobs:
+  full-suite:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      CI: '1'
+      TERM: xterm-256color
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: d0d3edd0f8cf8d4487ca85843b288b14c9c7ee43
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Fetch explicit compatibility baselines
+        run: |
+          git remote add readiness-upstream https://github.com/stablyai/orca.git
+          git fetch --depth=1 --no-tags readiness-upstream \
+            refs/tags/v1.4.184:refs/tags/v1.4.184 \
+            refs/tags/v1.4.190:refs/tags/v1.4.190 \
+            refs/tags/v1.4.199:refs/tags/v1.4.199 \
+            refs/tags/v1.4.205:refs/tags/v1.4.205 \
+            refs/tags/v1.4.211:refs/tags/v1.4.211 \
+            refs/tags/v1.4.212:refs/tags/v1.4.212 \
+            refs/tags/v1.4.214:refs/tags/v1.4.214 \
+            refs/tags/v1.4.218:refs/tags/v1.4.218 \
+            refs/tags/v1.4.219:refs/tags/v1.4.219 \
+            refs/tags/v1.4.220:refs/tags/v1.4.220 \
+            refs/tags/v1.4.221:refs/tags/v1.4.221 \
+            refs/tags/v1.4.222:refs/tags/v1.4.222 \
+            refs/tags/v1.4.224:refs/tags/v1.4.224 \
+            refs/tags/v1.4.229:refs/tags/v1.4.229 \
+            4cb013c0a9251275fa3d20ea33b45429e07aa6be:refs/orca-readiness/history/4cb013c0a9 \
+            4bb337741c335cfcc428d3b4271023566e2dadb8:refs/orca-readiness/history/4bb337741c \
+            fd9125ea8c7b347cd8b675a4095e31cd3c865d25:refs/orca-readiness/history/fd9125ea8c \
+            5a56636f6679071d6ec68b851ef7932cd3222560:refs/orca-readiness/history/5a56636f66 \
+            aac38d698ff75ac4c8658addab48ef5a83617619:refs/orca-readiness/history/aac38d698f \
+            b49abdb1f4da6b3d62dfa9ccf3c74dc9e74d291c:refs/orca-readiness/history/b49abdb1f4 \
+            f97ca2a49d9c711dab54a656a7f8a47ae6c6749c:refs/orca-readiness/history/f97ca2a49d \
+            e817b0e23747ffd6f16f2ddefea861950d82a3c0:refs/orca-readiness/history/e817b0e237 \
+            3727100cc9dbcea6201f8a3e506676a3c4b53b18:refs/orca-readiness/history/3727100cc9 \
+            b6b4d68cd844c921c7c5191cef72d5adafc0dafa:refs/orca-readiness/history/b6b4d68cd8 \
+            6fcc183ab951fb751cf02ccb9e2af3cf129a4316:refs/orca-readiness/baseline
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: node
+          node-version: '24.21.0'
+          cache-electron-package: 'true'
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version-file: config/.bun-version
+      - name: Install CI shell and display prerequisites
+        run: |
+          sudo add-apt-repository --yes --no-update ppa:fish-shell/release-4
+          sudo apt-get update
+          sudo apt-get install -y zsh fish lsof xvfb xauth libgtk-3-0t64
+          version="$(fish --version)"
+          major="${version##*version }"
+          major="${major%%.*}"
+          test "$major" -ge 4
+          kernel="$(uname -r)"
+          case "$kernel" in *[Mm]icrosoft*|*[Ww][Ss][Ll]*) echo 'Native Linux kernel required'; exit 1;; esac
+          printf '%s\n' "$version" "$kernel"
+          git --version
+          node --version
+          bun --version
+          git init --ref-format=reftable "$RUNNER_TEMP/reftable-probe"
+      - name: Install Electron binary
+        run: node config/scripts/install-electron-package-binary.mjs
+      - name: Install relay integration prerequisites
+        working-directory: cloud
+        run: |
+          npx --yes pnpm@10.34.6 --filter '@orca-cloud/relay...' install --frozen-lockfile --ignore-scripts
+          npx --yes pnpm@10.34.6 --filter '@orca-cloud/relay^...' build
+      - name: Install browser prerequisites
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Verify exact candidate source
+        run: test "$(git rev-parse HEAD)" = d0d3edd0f8cf8d4487ca85843b288b14c9c7ee43
+      - name: Full required test command
+        id: full-tests
+        run: xvfb-run --auto-servernum pnpm test --maxWorkers=4
+      - name: Compare known platform assertions on unchanged baseline
+        if: failure() && steps.full-tests.outcome == 'failure'
+        run: |
+          git checkout --detach 6fcc183ab951fb751cf02ccb9e2af3cf129a4316
+          xvfb-run --auto-servernum pnpm test --maxWorkers=1 \
+            src/main/fish-xdg-data-dirs-handoff.test.ts \
+            src/main/shell-startup-feature-channel.test.ts \
+            src/main/daemon/shell-ready.test.ts \
+            src/main/daemon/repro-13767-shell-ready-marker-lost-to-exec.test.ts \
+            src/main/antigravity/native-credential-backend.test.ts \
+            src/main/git/merge-tree-object-quarantine-real-git.test.ts \
+            config/scripts/pty-transcript-secret-scan.test.mjs \
+            src/shared/claude-shell-function.test.ts \
+            src/shared/startup-command-staging.node-pty.test.ts \
+            src/main/ssh/ssh-relay-endpoint-incumbent-shell.integration.test.ts
