@@ -17,6 +17,8 @@ import {
   stubTerminalCreateEnvironment
 } from './web-runtime-session-test-harness'
 import { stubRuntimeEnvironmentBridge } from './runtime-environment-bridge-fixture'
+import { clearRuntimeCompatibilityCache } from './runtime-rpc-client'
+import { createRuntimeAgentBackgroundTerminal } from '../lib/runtime-agent-background-create'
 
 const mocks = vi.hoisted(() => ({
   getState: vi.fn(),
@@ -628,4 +630,80 @@ describe('createWebRuntimeSessionTerminal', () => {
       text: 'https://github.com/o/r/issues/12'
     })
   })
+
+  it.each(['background', 'web-host'] as const)(
+    'refuses %s OMP retry after the first host capability is invalidated',
+    async (lane) => {
+      let supportsThinking = true
+      let creates = 0
+      const runtimeCall = vi.fn(async (request: { method: string }) => {
+        if (request.method === 'status.get') {
+          return {
+            id: 'status',
+            ok: true,
+            result: {
+              runtimeProtocolVersion: 3,
+              minCompatibleRuntimeClientVersion: 2,
+              capabilities: [
+                'agent-session.host-authority.v1',
+                ...(supportsThinking ? ['agent.launch.omp-thinking.v1'] : [])
+              ]
+            }
+          }
+        }
+        if (request.method === 'terminal.createAgentSession') {
+          creates += 1
+          if (creates === 1) {
+            supportsThinking = false
+            clearRuntimeCompatibilityCache(ENVIRONMENT_ID)
+            throw new Error('connection closed before response')
+          }
+          return {
+            id: 'create',
+            ok: true,
+            result: {
+              terminal: {
+                handle: 'incorrect-replacement-create',
+                tabId: 'host-tab-replayed',
+                paneKey: `host-tab-replayed:${FOCUS_LEAF_ID}`
+              }
+            }
+          }
+        }
+        return { id: 'list', ok: true, result: makeSnapshot() }
+      })
+      stubRuntimeEnvironmentBridge({ call: runtimeCall })
+      const outcome =
+        lane === 'background'
+          ? await createRuntimeAgentBackgroundTerminal({
+              environmentId: ENVIRONMENT_ID,
+              worktreeId: WORKTREE_ID,
+              tabId: 'tab-1',
+              leafId: FOCUS_LEAF_ID,
+              agent: 'omp',
+              sessionOptions: { model: 'opus', effort: 'off' },
+              legacy: {
+                command: 'omp',
+                env: {},
+                launchConfig: { agentArgs: '', agentEnv: {} },
+                launchToken: 'owned-test-launch'
+              }
+            }).then(
+              () => 'created',
+              () => 'refused'
+            )
+          : (
+                await createWebRuntimeSessionTerminal({
+                  worktreeId: WORKTREE_ID,
+                  launchAgent: 'omp',
+                  launchPreferences: { model: 'opus', effort: 'off' }
+                })
+              ).status === 'failed'
+            ? 'refused'
+            : 'created'
+
+      expect(outcome).toBe('refused')
+      expect(creates).toBe(1)
+    }
+  )
 })

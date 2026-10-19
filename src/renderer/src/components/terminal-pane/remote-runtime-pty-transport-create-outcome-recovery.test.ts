@@ -378,4 +378,58 @@ describe('createRemoteRuntimePtyTransport', () => {
       vi.useRealTimers()
     }
   })
+
+  it('refuses automatic OMP replay after pairing invalidates the first host capability', async () => {
+    vi.useFakeTimers()
+    let transport: PtyTransport | undefined
+    try {
+      // Each fixture reloads the transport and its production capability cache together.
+      const { clearRuntimeCompatibilityCache } = await import('../../runtime/runtime-rpc-client')
+      const { createRemoteRuntimePtyTransport } = await import('./remote-runtime-pty-transport')
+      let supportsThinking = true
+      let creates = 0
+      runtimeCall.mockImplementation(async (args: { method: string }) => {
+        if (args.method === 'status.get') {
+          return {
+            ok: true,
+            result: {
+              runtimeProtocolVersion: 3,
+              minCompatibleRuntimeClientVersion: 2,
+              capabilities: [
+                'agent-session.host-authority.v1',
+                ...(supportsThinking ? ['agent.launch.omp-thinking.v1'] : [])
+              ]
+            }
+          }
+        }
+        if (args.method === 'terminal.createAgentSession') {
+          creates += 1
+          supportsThinking = false
+          clearRuntimeCompatibilityCache('env-1')
+        }
+        throw Object.assign(new Error('Timed out waiting for the remote Orca runtime.'), {
+          code: 'runtime_timeout'
+        })
+      })
+      const onError = vi.fn()
+      transport = createRemoteRuntimePtyTransport('env-1', {
+        worktreeId: 'wt-1',
+        tabId: 'tab-1',
+        leafId: 'pane:1',
+        launchAgent: 'omp',
+        agentLaunchPreferences: { model: 'opus', effort: 'off' }
+      })
+      const connect = transport.connect({ url: '', callbacks: { onError } })
+      await vi.advanceTimersByTimeAsync(REMOTE_RUNTIME_AUTO_RECOVERY_TIMEOUT_MS)
+      await connect
+
+      expect(creates).toBe(1)
+      expect(onError).toHaveBeenCalled()
+      expect(runtimeCall.mock.calls.some(([args]) => args.method === 'terminal.create')).toBe(false)
+      expect(transport.getPtyId()).toBeNull()
+    } finally {
+      transport?.destroy?.()
+      vi.useRealTimers()
+    }
+  })
 })

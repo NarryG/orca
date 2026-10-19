@@ -3135,8 +3135,15 @@ export function createRemoteRuntimePtyTransport(
         const keyboardOptions = await agentKeyboardOptions(createEnvironmentId)
         return createWithUnknownOutcomeRecovery(
           'agent-session',
-          (timeoutMs) =>
-            resumeProviderSessionToSend
+          async (timeoutMs) => {
+            if (launchAgentToSend === 'omp') {
+              await assertRemoteAgentThinkingSupported({
+                environmentId: createEnvironmentId,
+                agent: launchAgentToSend,
+                launchPreferences: agentLaunchPreferences
+              })
+            }
+            return resumeProviderSessionToSend
               ? callRuntimeForEnvironment<RuntimeEnsureAgentSessionResult>(
                   createEnvironmentId,
                   'terminal.ensureAgentSession',
@@ -3179,7 +3186,8 @@ export function createRemoteRuntimePtyTransport(
                     agentCreateOperation.clientOperationId
                   ),
                   timeoutMs
-                ),
+                )
+          },
           createEnvironmentId,
           connectLifecycleEpoch
         )
@@ -3187,13 +3195,6 @@ export function createRemoteRuntimePtyTransport(
       const resumeHostAuthorityCapability = resumeProviderSessionToSend
         ? agentResumeHostAuthorityCapability(launchAgentToSend)
         : undefined
-      if (launchAgentToSend && agentSessionRequiresHostAuthorityReplay) {
-        await assertRemoteAgentThinkingSupported({
-          environmentId: createEnvironmentId,
-          agent: launchAgentToSend,
-          launchPreferences: agentLaunchPreferences
-        })
-      }
       const created = launchAgentToSend
         ? agentSessionRequiresHostAuthorityReplay
           ? await hostAuthorityCreate()
