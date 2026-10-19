@@ -16,8 +16,8 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4]
         candidate:
-          - topic: recovery
-            sha: 9c90f4ddd642cb4247462df3361d6af5fb49daec
+          - topic: thinking
+            sha: 7f177774d1a994f8fa28d3bf5ceb844b7864e5a0
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
       CI: '1'
