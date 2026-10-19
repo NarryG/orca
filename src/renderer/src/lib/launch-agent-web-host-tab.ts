@@ -61,16 +61,13 @@ export function launchAgentInWebHostTab(args: {
     ...(viewMode ? { viewMode } : {}),
     agentSessionKind: 'fresh',
     command: startupPlan.launchCommand,
-    ...(hasPrompt
-      ? {
-          launchAgent: agent,
-          ...(startupPlan.env ? { env: startupPlan.env } : {}),
-          launchConfig: startupPlan.launchConfig,
-          ...(startupPlan.startupCommandDelivery
-            ? { startupCommandDelivery: startupPlan.startupCommandDelivery }
-            : {})
-        }
-      : { agent }),
+    launchAgent: agent,
+    ...(startupPlan.env ? { env: startupPlan.env } : {}),
+    launchConfig: startupPlan.launchConfig,
+    ...(startupPlan.startupCommandDelivery
+      ? { startupCommandDelivery: startupPlan.startupCommandDelivery }
+      : {}),
+    ...(!hasPrompt ? { agent } : {}),
     ...(hasPrompt && pastePromptAfterReady === null ? { prompt } : {}),
     ...(hasPrompt && pastePromptAfterReady === null
       ? { promptDelivery: structuredPromptDelivery }

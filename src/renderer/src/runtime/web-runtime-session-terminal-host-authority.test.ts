@@ -712,9 +712,14 @@ describe('createWebRuntimeSessionTerminal', () => {
   it('preserves prepared OMP thinking argv for a promptless web legacy launch', async () => {
     const state = mocks.getState()
     mocks.getState.mockReturnValue({ ...state, setActiveTabType: vi.fn() })
-    const creates: { command?: string }[] = []
+    const creates: {
+      command?: string
+      env?: Record<string, string>
+      launchConfig?: { agentEnv?: Record<string, string> | null; agentCommand?: string }
+      launchAgent?: string
+    }[] = []
     const runtimeCall = vi.fn(
-      async (request: { method: string; params?: { command?: string } }) => {
+      async (request: { method: string; params?: (typeof creates)[number] }) => {
         if (request.method === 'status.get') {
           return {
             id: 'status',
@@ -740,6 +745,7 @@ describe('createWebRuntimeSessionTerminal', () => {
       cmdOverrides: {},
       platform: 'linux',
       allowEmptyPromptLaunch: true,
+      agentEnv: { OMP_TEST_CUSTOM_CONFIG_ROOT: '/host/custom-omp-config' },
       sessionOptions: { model: 'anthropic/claude-opus-5-5', effort: 'off' }
     })
     if (!startupPlan) {
@@ -761,6 +767,11 @@ describe('createWebRuntimeSessionTerminal', () => {
     expect(creates[0].command).toMatch(/['"]?--thinking['"]?\s+['"]?off(?:['"]|\s|$)/)
     expect(creates[0].command).toMatch(
       /['"]?--model['"]?\s+['"]?anthropic\/claude-opus-5-5(?:['"]|\s|$)/
+    )
+    expect(creates[0].env?.OMP_TEST_CUSTOM_CONFIG_ROOT).toBe('/host/custom-omp-config')
+    expect(creates[0].launchAgent).toBe('omp')
+    expect(creates[0].launchConfig?.agentEnv?.OMP_TEST_CUSTOM_CONFIG_ROOT).toBe(
+      '/host/custom-omp-config'
     )
   })
 })
