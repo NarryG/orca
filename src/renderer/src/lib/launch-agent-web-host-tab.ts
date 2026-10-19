@@ -60,17 +60,14 @@ export function launchAgentInWebHostTab(args: {
     ...(cwd?.trim() ? { cwd } : {}),
     ...(viewMode ? { viewMode } : {}),
     agentSessionKind: 'fresh',
-    ...(hasPrompt
-      ? {
-          launchAgent: agent,
-          command: startupPlan.launchCommand,
-          ...(startupPlan.env ? { env: startupPlan.env } : {}),
-          launchConfig: startupPlan.launchConfig,
-          ...(startupPlan.startupCommandDelivery
-            ? { startupCommandDelivery: startupPlan.startupCommandDelivery }
-            : {})
-        }
-      : { agent }),
+    command: startupPlan.launchCommand,
+    launchAgent: agent,
+    ...(startupPlan.env ? { env: startupPlan.env } : {}),
+    launchConfig: startupPlan.launchConfig,
+    ...(startupPlan.startupCommandDelivery
+      ? { startupCommandDelivery: startupPlan.startupCommandDelivery }
+      : {}),
+    ...(!hasPrompt ? { agent } : {}),
     ...(hasPrompt && pastePromptAfterReady === null ? { prompt } : {}),
     ...(hasPrompt && pastePromptAfterReady === null
       ? { promptDelivery: structuredPromptDelivery }
@@ -122,7 +119,7 @@ export function launchAgentInWebHostTab(args: {
       launchDraft: prompt
     }).then((outcome) => handleCreation({ outcome, promptDelivered: outcome.status === 'created' }))
   }
-  return createWebRuntimeSessionTerminal(launch).then((outcome) =>
+  return createWebRuntimeSessionTerminal(launch, { notifyFailure: false }).then((outcome) =>
     handleCreation({ outcome, promptDelivered: outcome.status === 'created' && hasPrompt })
   )
 }

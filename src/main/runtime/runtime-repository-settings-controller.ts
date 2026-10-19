@@ -7,6 +7,7 @@ import { invalidateAuthorizedRootsCache } from '../ipc/registered-worktree-roots
 import { prepareLocalWorktreeRootForRepo } from '../worktree-root-preparation'
 import type { RuntimeStore } from './runtime-store-contract'
 import { assertWslMoveRepoWritable } from '../persistence/moving-wsl-projects/wsl-move-scope-guard'
+import { teardownStops } from './owned-session-teardown-policy'
 
 const PROJECT_TERMINAL_STOP_BUDGET_MS = 10_000
 
@@ -73,11 +74,7 @@ export class RuntimeRepositorySettingsController {
     if (isFolderRepo(repo)) {
       throw new Error('Folder mode does not support base refs.')
     }
-    const updated = store.updateRepo(
-      repo.id,
-      { worktreeBaseRef: baseRef },
-      getRepoExecutionHostId(repo)
-    )
+    const updated = store.updateRepo(repo, { worktreeBaseRef: baseRef })
     if (!updated) {
       throw new Error('repo_not_found')
     }
@@ -105,12 +102,7 @@ export class RuntimeRepositorySettingsController {
     }
     const write = (proven: Pick<Repo, 'folderUpgradeGitRootPath'>): Repo | null => {
       assertWslMoveRepoWritable(store, repo)
-      // Why the host: a same-id sibling on another host would take an id-only write.
-      return store.updateRepo(
-        repo.id,
-        { ...sanitizedUpdates, ...proven },
-        getRepoExecutionHostId(repo)
-      )
+      return store.updateRepo(repo, { ...sanitizedUpdates, ...proven })
     }
     const updated =
       sanitizedUpdates.kind === 'git' && isFolderRepo(repo)
@@ -131,12 +123,13 @@ export class RuntimeRepositorySettingsController {
     return updated
   }
 
-  async remove(repoSelector: string): Promise<{ removed: true }> {
+  /** `repo.rm` names a selector; this desktop's own removal names the exact host row. */
+  async remove(target: string | Repo): Promise<{ removed: true }> {
     const store = this.deps.getStore()
     if (!store?.removeProjectForHost) {
       throw new Error('runtime_unavailable')
     }
-    const repo = await this.deps.resolveRepo(repoSelector)
+    const repo = typeof target === 'string' ? await this.deps.resolveRepo(target) : target
     const hostId = getRepoExecutionHostId(repo)
     assertWslMoveRepoWritable(store, repo)
     // Why here: the host owns these shells; a client only stops the workspaces it has loaded,
@@ -156,7 +149,7 @@ export class RuntimeRepositorySettingsController {
     // Why again: a terminal spawned while the first stop ran is past that sweep's snapshot, and
     // nothing can spawn into the project once it is gone. Chats only now: retiring their tabs is
     // irreversible, and the WSL fence above can still refuse the removal.
-    await stopProjectTerminals(true)
+    await stopProjectTerminals(teardownStops('project-removal', 'structured-chat'))
     this.deps.forgetTerminalTopology(repo.id)
     this.deps.invalidateResolvedWorktrees()
     this.deps.invalidateWorktreeScan(repo.id)
