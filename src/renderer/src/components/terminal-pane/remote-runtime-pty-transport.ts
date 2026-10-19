@@ -1263,7 +1263,8 @@ export function createRemoteRuntimePtyTransport(
     kind: 'terminal' | 'agent-session',
     invoke: (
       timeoutMs: number,
-      reconcileExisting: boolean
+      reconcileExisting: boolean,
+      markCreateStarted: () => void
     ) => Promise<RemoteAgentSessionLaunchResult>,
     environmentId: string,
     expectedLifecycleEpoch: number
@@ -1352,21 +1353,30 @@ export function createRemoteRuntimePtyTransport(
       if (createRemainingMs !== null && createRemainingMs <= 0) {
         break
       }
+      let createStarted = false
       try {
-        return await invoke(Math.min(15_000, createRemainingMs ?? 15_000), reconcileExisting)
+        return await invoke(
+          Math.min(15_000, createRemainingMs ?? 15_000),
+          reconcileExisting,
+          () => {
+            createStarted = true
+          }
+        )
       } catch (error) {
         lastError = error
         const clientError = toRemoteRuntimeClientErrorLike(error)
         if (!isRecoverableRemoteRuntimeConnectionError(clientError)) {
           throw error
         }
-        if (kind === 'agent-session') {
-          agentSessionRequiresHostAuthorityReplay = true
-        } else {
-          terminalCreateNeedsReconciliation = true
+        if (createStarted) {
+          if (kind === 'agent-session') {
+            agentSessionRequiresHostAuthorityReplay = true
+          } else {
+            terminalCreateNeedsReconciliation = true
+          }
+          terminalCreateUnknownOutcomeError ??= error
+          reconcileExisting = true
         }
-        terminalCreateUnknownOutcomeError ??= error
-        reconcileExisting = true
         const startsRecovery = recoveryDeadlineAt === null
         recoveryDeadlineAt ??= Date.now() + REMOTE_RUNTIME_AUTO_RECOVERY_TIMEOUT_MS
         if (startsRecovery && !recovery.isActive) {
@@ -3118,7 +3128,7 @@ export function createRemoteRuntimePtyTransport(
       const legacyCreate = () =>
         createWithUnknownOutcomeRecovery(
           'terminal',
-          async (timeoutMs, reconcileExisting) => {
+          async (timeoutMs, reconcileExisting, markCreateStarted) => {
             if (launchAgentToSend === 'omp') {
               await assertRemoteAgentThinkingSupported({
                 environmentId: createEnvironmentId,
@@ -3126,6 +3136,7 @@ export function createRemoteRuntimePtyTransport(
                 launchPreferences: agentLaunchPreferences
               })
             }
+            markCreateStarted()
             return callRuntimeForEnvironment<{ terminal: RuntimeTerminalCreate }>(
               createEnvironmentId,
               'terminal.create',
@@ -3143,7 +3154,7 @@ export function createRemoteRuntimePtyTransport(
         const keyboardOptions = await agentKeyboardOptions(createEnvironmentId)
         return createWithUnknownOutcomeRecovery(
           'agent-session',
-          async (timeoutMs) => {
+          async (timeoutMs, _reconcileExisting, markCreateStarted) => {
             if (launchAgentToSend === 'omp') {
               await assertRemoteAgentThinkingSupported({
                 environmentId: createEnvironmentId,
@@ -3151,6 +3162,7 @@ export function createRemoteRuntimePtyTransport(
                 launchPreferences: agentLaunchPreferences
               })
             }
+            markCreateStarted()
             return resumeProviderSessionToSend
               ? callRuntimeForEnvironment<RuntimeEnsureAgentSessionResult>(
                   createEnvironmentId,

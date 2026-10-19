@@ -512,4 +512,67 @@ describe('createRemoteRuntimePtyTransport', () => {
       vi.useRealTimers()
     }
   })
+
+  it.each(['host-authority', 'legacy'] as const)(
+    'does not invent uncertain %s creation when only the thinking preflight times out',
+    async (lane) => {
+      vi.useFakeTimers()
+      let transport: PtyTransport | undefined
+      try {
+        let statusCalls = 0
+        const creates: { method: string; params?: { reconcileExisting?: boolean } }[] = []
+        runtimeCall.mockImplementation(
+          async (args: { method: string; params?: { reconcileExisting?: boolean } }) => {
+            if (args.method === 'status.get') {
+              statusCalls += 1
+              if (statusCalls > 1) {
+                throw Object.assign(new Error('Timed out waiting for the remote Orca runtime.'), {
+                  code: 'runtime_timeout'
+                })
+              }
+              return {
+                ok: true,
+                result: {
+                  runtimeProtocolVersion: 3,
+                  minCompatibleRuntimeClientVersion: 2,
+                  capabilities: [
+                    'agent.launch.omp-thinking.v1',
+                    TERMINAL_CREATE_IDEMPOTENCY_RUNTIME_CAPABILITY,
+                    ...(lane === 'host-authority' ? ['agent-session.host-authority.v1'] : [])
+                  ]
+                }
+              }
+            }
+            if (
+              args.method === 'terminal.create' ||
+              args.method === 'terminal.createAgentSession'
+            ) {
+              creates.push(args)
+              return { ok: true, result: { terminal: { handle: 'terminal-after-preflight' } } }
+            }
+            return { ok: true, result: {} }
+          }
+        )
+        // Reloaded transport and capability cache are paired by the fixture.
+        const { createRemoteRuntimePtyTransport } = await import('./remote-runtime-pty-transport')
+        transport = createRemoteRuntimePtyTransport('env-1', {
+          worktreeId: 'wt-1',
+          tabId: 'tab-1',
+          leafId: 'pane:1',
+          launchAgent: 'omp',
+          terminalKittyKeyboardProtocol: true,
+          agentLaunchPreferences: { model: 'opus', effort: 'off' }
+        })
+        const options = { url: '', callbacks: {} }
+        const first = transport.connect(options)
+        await vi.advanceTimersByTimeAsync(REMOTE_RUNTIME_AUTO_RECOVERY_TIMEOUT_MS)
+        await first
+        expect(creates).toEqual([])
+        expect(transport.retryRecovery?.()).toBe(false)
+      } finally {
+        transport?.destroy?.()
+        vi.useRealTimers()
+      }
+    }
+  )
 })
