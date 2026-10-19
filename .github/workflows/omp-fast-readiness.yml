@@ -16,16 +16,8 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4]
         candidate:
-          - topic: images
-            sha: 451b544e9914fa0357f3c8cb5c713c2c38764fdc
-          - topic: forms
-            sha: de98384610a76b3f28fe5cfd1be31572646ac50c
           - topic: recovery
-            sha: e4e008065f3b97e1ff93648c469dc0f5cd6d37c0
-          - topic: thinking
-            sha: 8da780c0801c34f76e22392e8f552491e844ea23
-          - topic: fast
-            sha: 20f5c5e2ab03d68a505d2668511c133017e973ac
+            sha: 9c90f4ddd642cb4247462df3361d6af5fb49daec
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
       CI: '1'
