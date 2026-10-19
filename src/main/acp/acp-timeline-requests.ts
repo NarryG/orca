@@ -4,17 +4,15 @@ import {
   DEFAULT_JOURNAL_PAYLOAD_LIMITS
 } from '../native-chat/agent-session-journal/journal-payload-bounds'
 import type { ProviderTimelineEvent } from '../native-chat/agent-session-timeline/provider-timeline-event'
-import type { AcpDialect, AcpRequestPresentation } from './acp-dialects/acp-dialect'
+import {
+  pendingAcpResolution,
+  type AcpDialect,
+  type AcpRequestPresentation
+} from './acp-dialects/acp-dialect'
 import type { AcpToolTimeline } from './acp-tool-timeline'
 import { AcpRpcError } from './acp-errors'
 import { readAcpPermissionRequest } from './acp-permission-requests'
-
-export const pendingAcpResolution = {
-  state: 'pending',
-  selectedOptionId: null,
-  resolvedBy: null,
-  resolvedAt: null
-} as const
+import { acpFormPresentation, ACP_FORM_ELICITATION_METHOD } from './acp-form-elicitation'
 
 /** `description`: the agent's own words about what answering means, shown above the choices. */
 export function acpPermissionPresentation(
@@ -110,6 +108,7 @@ export function translateAcpRequest(
     }
   }
   const presentation =
+    (method === ACP_FORM_ELICITATION_METHOD ? acpFormPresentation(params) : undefined) ??
     options.dialect.request?.(method, params) ??
     (method === 'session/request_permission' ? acpPermissionPresentation(params) : undefined)
   if (!presentation) {

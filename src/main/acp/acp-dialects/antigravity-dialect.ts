@@ -2,9 +2,9 @@ import { z } from 'zod'
 import { legacyAgentSessionQuestionAnswers } from '../../../shared/agent-session-question-answer'
 import { AcpRpcError } from '../acp-errors'
 import { readAcpPermissionRequest } from '../acp-permission-requests'
-import { acpPermissionPresentation, pendingAcpResolution } from '../acp-timeline-requests'
+import { acpPermissionPresentation } from '../acp-timeline-requests'
 import type { ToolCallUpdate } from '../generated/acp-protocol.generated'
-import type { AcpDialect, AcpRequestPresentation } from './acp-dialect'
+import { pendingAcpResolution, type AcpDialect, type AcpRequestPresentation } from './acp-dialect'
 
 // Antigravity asks the person a question as a permission request on an `interaction_` tool call,
 // one choice per option, sent even in its yolo mode: a question, never an approval to auto-allow.

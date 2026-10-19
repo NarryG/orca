@@ -45,6 +45,8 @@ export type AcpSessionRuntimeOptions = {
   clientInfo?: InitializeRequest['clientInfo']
   peer?: AcpPeerOptions
   onPermission?: AcpPermissionHandler
+  /** Only opt in when onRequest presents and answers supported form schemas. */
+  handlesFormElicitation?: true
   /** Agent requests other than permissions. The handler owns its request: once `context.signal`
    *  aborts, send the agent's own cancelled reply, finish an answer already in progress, or throw
    *  (-32800). The runtime never answers for it; a request left unanswered ends at `close()`. */
@@ -105,7 +107,13 @@ export class AcpSessionRuntime {
       'initialize',
       {
         protocolVersion: ACP_PROTOCOL_VERSION,
-        clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
+        clientCapabilities: {
+          fs: { readTextFile: false, writeTextFile: false },
+          terminal: false,
+          ...(this.options.handlesFormElicitation && this.options.onRequest
+            ? { elicitation: { form: {} } }
+            : {})
+        },
         ...(this.options.clientInfo === undefined ? {} : { clientInfo: this.options.clientInfo })
       } satisfies InitializeRequest,
       InitializeResponseSchema

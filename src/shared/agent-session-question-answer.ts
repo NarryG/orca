@@ -1,11 +1,11 @@
 import type { AgentJournalQuestion, AgentJournalQuestionItem } from './agent-session-journal-types'
 
-const GROUP_ANSWER_PREFIX = 'question-group:'
+export const GROUP_ANSWER_PREFIX = 'question-group:'
 
 /** A single-question item has no question list; the client and host must agree on its id. */
 const SINGLE_QUESTION_ID = 'q1'
 
-/** Longest option id a host takes, which also bounds an answer packed into one. */
+/** Longest scalar option id a host takes; grouped answers have separate structured bounds. */
 export const AGENT_SESSION_RESPONSE_OPTION_ID_MAX_LENGTH = 1024
 
 /** Largest typed answer to one question, in UTF-8 bytes. */
@@ -191,6 +191,13 @@ export function isValidAgentSessionQuestionAnswers(
       return false
     }
     const answerCount = answer.optionIds.length + (hasOther ? 1 : 0)
-    return answerCount > 0 && (question.multiSelect || answerCount === 1)
+    return (
+      answerCount > 0 &&
+      (answerCount === 1 ||
+        (question.multiSelect &&
+          !question.options.some(
+            (option) => option.exclusive && answer.optionIds.includes(option.id)
+          )))
+    )
   })
 }
