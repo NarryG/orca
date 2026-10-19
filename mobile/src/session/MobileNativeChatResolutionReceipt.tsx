@@ -76,9 +76,11 @@ export function MobileNativeChatResolutionReceipt({
           >
             {heading ? <Text style={text}>{heading}</Text> : null}
             <Text selectable={INLINE_TEXT_SELECTION} style={text} numberOfLines={3}>
-              {answer.answer === ''
-                ? NATIVE_CHAT_RECEIPT_COPY.emptyAnswer
-                : (answer.answer ?? NATIVE_CHAT_RECEIPT_COPY.unavailable)}
+              {answer.copy === 'declined'
+                ? NATIVE_CHAT_RECEIPT_COPY.declined
+                : answer.answer === ''
+                  ? NATIVE_CHAT_RECEIPT_COPY.emptyAnswer
+                  : (answer.answer ?? NATIVE_CHAT_RECEIPT_COPY.unavailable)}
             </Text>
           </View>
         )

@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
 import type { AskAnswerSelection, AskPrompt } from './native-chat-interactive-prompt'
 import { NativeChatPromptCollapseToggle } from './NativeChatPromptCollapse'
+import { NativeChatQuestionOptionRow } from './NativeChatQuestionOptionRow'
 import { useNativeChatPromptCardFocus } from './use-native-chat-prompt-card-focus'
 import { useNativeChatQuestionAutoAdvance } from './use-native-chat-question-auto-advance'
 import { useNativeChatQuestionKeys } from './use-native-chat-question-keys'
@@ -23,6 +24,8 @@ export type NativeChatQuestionCardProps = {
   freeTextInputs?: readonly (AgentJournalFreeTextInput | undefined)[]
   /** Dismiss the prompt (sends Escape to the agent). */
   onCancel: () => void
+  /** Optional whole-form refusal; unlike Cancel it does not stop the turn. */
+  onDecline?: () => void
   /** Fold the card to a strip and give the input back, writing nothing; Escape does too. */
   onCollapse?: () => void
   /** Take focus when the card takes the input region; number keys pick while it holds. */
@@ -53,6 +56,7 @@ export function NativeChatQuestionCard({
   allowOther = true,
   freeTextInputs,
   onCancel,
+  onDecline,
   onCollapse,
   shouldFocus = false,
   answerInputRef
@@ -77,15 +81,15 @@ export function NativeChatQuestionCard({
   const answerPlaceholder =
     freeTextInput?.placeholder ??
     translate('components.native-chat.question.otherPlaceholder', 'Type your answer')
-  const acceptsEmpty = (qi: number): boolean =>
-    freeTextInputs?.[qi]?.allowEmpty === true && prompt.questions[qi]?.options.length === 0
+  const acceptsEmpty = (qi: number): boolean => freeTextInputs?.[qi]?.allowEmpty === true
   const typedText = (qi: number, oth = otherText): string =>
     freeTextInputs?.[qi]?.allowEmpty ? (oth[qi] ?? '') : (oth[qi] ?? '').trim()
 
   // Picking an option replaces a chosen typed answer on single-select; the text stays in
   // the field, unsent, until the user types or clicks there again.
   const typedAnswerChosen = (qi: number, sel = selections, oth = otherText): boolean =>
-    acceptsEmpty(qi) || ((sel[qi] ?? []).includes(TYPED_ANSWER) && typedText(qi, oth).length > 0)
+    (acceptsEmpty(qi) && !sel[qi]?.some((choice) => choice !== TYPED_ANSWER)) ||
+    ((sel[qi] ?? []).includes(TYPED_ANSWER) && typedText(qi, oth).length > 0)
 
   const chooseTypedAnswer = (qi: number): void => {
     setSelections((prev) => {
@@ -93,7 +97,10 @@ export function NativeChatQuestionCard({
       if (cur.includes(TYPED_ANSWER)) {
         return prev
       }
-      const chosen = prompt.questions[qi]?.multiSelect ? [...cur, TYPED_ANSWER] : [TYPED_ANSWER]
+      const question = prompt.questions[qi]
+      const chosen = question?.multiSelect
+        ? [...cur.filter((choice) => !question.options[choice]?.exclusive), TYPED_ANSWER]
+        : [TYPED_ANSWER]
       return prev.map((s, i) => (i === qi ? chosen : s))
     })
   }
@@ -159,8 +166,10 @@ export function NativeChatQuestionCard({
     const picked = !cur.includes(optionIndex)
     const chosen = !picked
       ? cur.filter((pickedIndex) => pickedIndex !== optionIndex)
-      : q.multiSelect
-        ? [...cur, optionIndex].sort((a, b) => a - b)
+      : q.multiSelect && !q.options[optionIndex]?.exclusive
+        ? [...cur.filter((choice) => !q.options[choice]?.exclusive), optionIndex].sort(
+            (a, b) => a - b
+          )
         : [optionIndex]
     const next = selections.map((s, i) => (i === index ? chosen : s))
     setSelections(next)
@@ -294,7 +303,7 @@ export function NativeChatQuestionCard({
               the card's right edge instead of crowding the choices. */}
           <div className="max-h-[50vh] divide-y divide-border/60 overflow-y-auto border-t border-border scrollbar-sleek">
             {q.options.map((opt, i) => (
-              <OptionRow
+              <NativeChatQuestionOptionRow
                 key={`${i}:${opt.label}`}
                 badge={String(i + 1)}
                 initialFocus={i === 0}
@@ -370,6 +379,19 @@ export function NativeChatQuestionCard({
               ) : (
                 <span className="flex-1" />
               )}
+              {onDecline ? (
+                <button
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={() => {
+                    autoAdvance.cancel()
+                    onDecline()
+                  }}
+                  className="shrink-0 whitespace-nowrap rounded-md px-3 py-1 text-xs font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-50"
+                >
+                  {translate('components.native-chat.question.decline', 'Decline request')}
+                </button>
+              ) : null}
               <button
                 type="button"
                 disabled={isSubmitting}
@@ -400,54 +422,5 @@ export function NativeChatQuestionCard({
         ) : null}
       </div>
     </div>
-  )
-}
-
-function OptionRow({
-  badge,
-  initialFocus,
-  label,
-  description,
-  selected,
-  disabled,
-  onSelect
-}: {
-  badge: string
-  initialFocus: boolean
-  label: string
-  description?: string
-  selected: boolean
-  disabled: boolean
-  onSelect: () => void
-}): React.JSX.Element {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onSelect}
-      // Selection is otherwise only the visual check/badge swap; expose it to
-      // assistive tech.
-      aria-pressed={selected}
-      data-native-chat-prompt-card-focus-target={initialFocus || undefined}
-      className={cn(
-        'flex w-full items-start gap-3 px-3.5 py-2.5 text-left transition-colors focus:bg-accent focus:outline-none focus:ring-2 focus:ring-inset focus:ring-ring disabled:pointer-events-none',
-        selected ? 'bg-accent' : 'hover:bg-accent'
-      )}
-    >
-      <span
-        className={cn(
-          'flex size-6 shrink-0 items-center justify-center rounded-md text-xs font-medium',
-          selected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-        )}
-      >
-        {selected ? <Check className="size-3.5" strokeWidth={3} /> : badge}
-      </span>
-      <span className="min-w-0">
-        <span className="block break-words text-sm text-foreground">{label}</span>
-        {description ? (
-          <span className="block break-words text-xs text-muted-foreground">{description}</span>
-        ) : null}
-      </span>
-    </button>
   )
 }

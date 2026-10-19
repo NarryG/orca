@@ -142,7 +142,8 @@ const Block = openDiscriminatedUnion(
 const PromptOption = z.object({
   id: z.string(),
   label: z.string(),
-  description: z.string().optional()
+  description: z.string().optional(),
+  exclusive: z.boolean().optional()
 })
 
 const FreeTextInput = z.object({
@@ -254,6 +255,7 @@ const KnownItemBody = z.discriminatedUnion('kind', [
     questions: z.array(Question).optional(),
     freeTextQuestionId: z.string().optional(),
     freeTextInput: FreeTextInput.optional(),
+    declineOptionId: z.string().optional(),
     resolution: Resolution
   }),
   z.object({

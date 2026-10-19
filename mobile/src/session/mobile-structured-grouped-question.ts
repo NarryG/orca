@@ -120,6 +120,9 @@ export function projectGroupedQuestion(
     ...(promptIdentity ? { prompt: promptIdentity } : {}),
     options: question.options.map((option) => option.label),
     ...(optionDescriptions.some(Boolean) ? { optionDescriptions } : {}),
+    ...(question.options.some((option) => option.exclusive)
+      ? { optionExclusive: question.options.map((option) => option.exclusive === true) }
+      : {}),
     multiSelect: question.multiSelect,
     allowOther: Boolean(question.freeTextQuestionId),
     ...(question.freeTextInput ? { freeTextInput: question.freeTextInput } : {}),
@@ -210,7 +213,7 @@ export function advanceGroupedQuestion(args: {
     return null
   }
   const answer = answerFromResponse(args.response, question, args.promptKey)
-  if (!answer) {
+  if (!answer || !isValidAgentSessionQuestionAnswers([question], [answer])) {
     return null
   }
   const answers = [...collected, answer]

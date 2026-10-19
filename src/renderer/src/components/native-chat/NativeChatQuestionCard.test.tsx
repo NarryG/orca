@@ -163,6 +163,99 @@ describe('NativeChatQuestionCard', () => {
     expect(onAnswer).toHaveBeenCalledWith([{ indices: [0, 2], other: '' }])
   })
 
+  it.each([
+    { picks: ['Apple', 'Banana', 'Skip'], indices: [3] },
+    { picks: ['Skip', 'Apple', 'Banana'], indices: [0, 1] },
+    { picks: ['Apple', 'Banana', 'No selections'], indices: [2] },
+    { picks: ['No selections', 'Banana'], indices: [1] },
+    { picks: ['Skip', 'No selections'], indices: [2] },
+    { picks: ['No selections', 'Skip'], indices: [3] }
+  ])(
+    'keeps exclusive multi-select choices separate from other choices: $picks',
+    ({ picks, indices }) => {
+      const onAnswer = vi.fn()
+      const prompt = {
+        questions: [
+          {
+            question: 'Which fruits?',
+            multiSelect: true,
+            options: [
+              { label: 'Apple' },
+              { label: 'Banana' },
+              { label: 'No selections', exclusive: true },
+              { label: 'Skip', exclusive: true }
+            ]
+          }
+        ]
+      }
+      render(prompt, onAnswer, false)
+
+      for (const label of picks) {
+        clickOption(label)
+      }
+      for (const [index, option] of prompt.questions[0]!.options.entries()) {
+        expect(optionPressed(option.label)).toBe(indices.includes(index) ? 'true' : 'false')
+      }
+      clickAction('Submit')
+
+      expect(onAnswer).toHaveBeenCalledWith([{ indices, other: '' }])
+    }
+  )
+
+  it('keeps ordinary multi-select options additive with a typed answer', () => {
+    const onAnswer = vi.fn()
+    render(
+      {
+        questions: [
+          {
+            question: 'Which fruits?',
+            multiSelect: true,
+            options: [{ label: 'Apple' }, { label: 'Banana' }]
+          }
+        ]
+      },
+      onAnswer
+    )
+
+    clickOption('Apple')
+    typeAnswer('Dragon fruit')
+    clickOption('Banana')
+    clickAction('Submit')
+
+    expect(onAnswer).toHaveBeenCalledWith([{ indices: [0, 1], other: 'Dragon fruit' }])
+  })
+
+  it.each([true, false])(
+    'keeps typed answers separate from exclusive choices (typed first=%s)',
+    (typedFirst) => {
+      const onAnswer = vi.fn()
+      const prompt = {
+        questions: [
+          {
+            question: 'Which fruits?',
+            multiSelect: true,
+            options: [{ label: 'Apple' }, { label: 'Skip', exclusive: true }]
+          }
+        ]
+      }
+      render(prompt, onAnswer)
+
+      if (typedFirst) {
+        typeAnswer('Dragon fruit')
+        clickOption('Skip')
+      } else {
+        clickOption('Skip')
+        typeAnswer('Dragon fruit')
+      }
+      expect(optionPressed('Skip')).toBe(typedFirst ? 'true' : 'false')
+      clickAction('Submit')
+
+      expect(onAnswer).toHaveBeenCalledWith([
+        typedFirst ? { indices: [1], other: '' } : { indices: [], other: 'Dragon fruit' }
+      ])
+    }
+  )
+
   it('keeps duplicate labels distinct by their numbered row', () => {
     const onAnswer = vi.fn()
     render(

@@ -37,12 +37,20 @@ export function MobileNativeChatQuestion({
 
   const hasOptions = question.options.length > 0
   const answerText = question.freeTextInput?.allowEmpty ? freeText : freeText.trim()
+  const hasExclusiveSelection = selectedOptionIndexes.some(
+    (index) => question.optionExclusive?.[index]
+  )
 
   const toggle = (optionIndex: number): void => {
+    if (question.optionExclusive?.[optionIndex]) {
+      setFreeText('')
+    }
     setSelectedOptionIndexes((prev) =>
       prev.includes(optionIndex)
         ? prev.filter((index) => index !== optionIndex)
-        : [...prev, optionIndex]
+        : question.optionExclusive?.[optionIndex]
+          ? [optionIndex]
+          : [...prev.filter((index) => !question.optionExclusive?.[index]), optionIndex]
     )
   }
 
@@ -72,7 +80,7 @@ export function MobileNativeChatQuestion({
       return
     }
     const answer =
-      question.freeTextToken && answerText.length > 0
+      question.freeTextToken && answerText.length > 0 && !hasExclusiveSelection
         ? formatQuestionAnswerWithOtherByIndexes(question, selectedOptionIndexes, answerText)
         : formatQuestionAnswerByIndexes(question, selectedOptionIndexes)
     if (await sendAnswer(answer)) {
@@ -86,7 +94,11 @@ export function MobileNativeChatQuestion({
     }
     const answer =
       question.multiSelect && question.freeTextToken && selectedOptionIndexes.length > 0
-        ? formatQuestionAnswerWithOtherByIndexes(question, selectedOptionIndexes, answerText)
+        ? formatQuestionAnswerWithOtherByIndexes(
+            question,
+            selectedOptionIndexes.filter((index) => !question.optionExclusive?.[index]),
+            answerText
+          )
         : formatQuestionFreeTextAnswer(question, answerText)
     if (await sendAnswer(answer)) {
       setFreeText('')
@@ -173,20 +185,41 @@ export function MobileNativeChatQuestion({
         </Pressable>
       ) : null}
 
+      {question.declineToken ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Decline request"
+          style={({ pressed }) => [
+            styles.submit,
+            styles.decline,
+            pressed && !sending && styles.pressed
+          ]}
+          disabled={sending}
+          onPress={() => sendAnswer(question.declineToken!)}
+        >
+          <Text style={[styles.submitText, styles.declineText]}>Decline request</Text>
+        </Pressable>
+      ) : null}
+
       {allowOther ? (
         <View style={styles.freeTextRow}>
           <TextInput
             style={mobileNativeChatInputStyles.freeInput}
             value={freeText}
-            onChangeText={setFreeText}
+            onChangeText={(text) => {
+              setFreeText(text)
+              setSelectedOptionIndexes((prev) =>
+                prev.filter((index) => !question.optionExclusive?.[index])
+              )
+            }}
             placeholder={
               question.freeTextInput?.placeholder ??
               (hasOptions ? 'Or type a reply…' : 'Type your reply…')
             }
             placeholderTextColor={colors.textMuted}
             selectionColor={colors.accentBlue}
-            onSubmitEditing={submitFreeText}
-            returnKeyType="send"
+            onSubmitEditing={question.freeTextInput?.multiline ? undefined : submitFreeText}
+            returnKeyType={question.freeTextInput?.multiline ? 'default' : 'send'}
             // A declared input (Pi's `input`) is one line unless it asks for more, as on desktop.
             multiline={question.freeTextInput ? question.freeTextInput.multiline === true : true}
           />
@@ -295,6 +328,12 @@ const styles = StyleSheet.create({
     fontWeight: '600'
   },
   submitTextDisabled: {
+    color: colors.textMuted
+  },
+  decline: {
+    backgroundColor: colors.bgRaised
+  },
+  declineText: {
     color: colors.textMuted
   },
   freeTextRow: {
