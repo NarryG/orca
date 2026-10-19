@@ -1,4 +1,4 @@
-name: OMP thinking CodeRabbit verification
+name: OMP final CodeRabbit verification
 on:
   push:
     branches:
@@ -7,17 +7,19 @@ permissions:
   contents: read
 jobs:
   linux:
-    name: Linux (thinking, shard ${{ matrix.shard }}/4)
+    name: Linux (${{ matrix.candidate.topic }}, shard ${{ matrix.shard }}/4)
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 8
       matrix:
         shard: [1, 2, 3, 4]
         candidate:
           - topic: thinking
-            sha: 73553b1bfffd5d4df0904c1dde1952b488d7b7d9
+            sha: 8f04f20db685f419a1c937bfcb3b3f8f62253f51
+          - topic: forms
+            sha: ad2a53d4a0df9c804498c0503106e29ecae39457
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
       CI: '1'
