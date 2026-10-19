@@ -144,6 +144,8 @@ export type AcpLaunchSpec = {
   }
   /** Images go to the agent when it also advertises them; off sends text prompts only. */
   imagePrompts?: true
+  /** Opts in only agents whose elicitation forms Orca supports. */
+  formElicitation?: true
   /** The agent compacts its conversation when sent `/compact` as a prompt; off hides `/compact`. */
   compaction?: true
   /** Throws when the chat's own arguments would send a copied conversation's CLI elsewhere than
@@ -269,6 +271,7 @@ const OMP_LAUNCH_SPEC: AcpLaunchSpec = {
   args: ({ pluginDir }) => ['acp', ...(pluginDir ? ['--plugin-dir', pluginDir] : [])],
   env: {},
   dialect: OMP_ACP_DIALECT,
+  formElicitation: true,
   loginCommand: agentSessionSignInFor('omp')?.loginCommand ?? [],
   // The directory OMP's terminal chats read too; its default is OMP's own.
   account: directoryAccountBinding('PI_CODING_AGENT_DIR', (homePath) =>

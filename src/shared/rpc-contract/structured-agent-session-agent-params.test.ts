@@ -5,9 +5,14 @@ import {
   CreateIntentParams,
   CreateSupportParams,
   ModelCatalogParams,
-  RespondToQuestionParams
+  RespondToQuestionParams,
+  MAX_PROMPT_BYTES,
+  MAX_RESPONSE_OPTION_ID_LENGTH
 } from './structured-agent-session-params'
-import { AGENT_SESSION_QUESTION_ANSWER_MAX_BYTES } from '../agent-session-question-answer'
+import {
+  AGENT_SESSION_QUESTION_ANSWER_MAX_BYTES,
+  encodeAgentSessionQuestionAnswers
+} from '../agent-session-question-answer'
 
 const ENVELOPE = {
   sessionId: 'agent-session-0123456789abcdef0123456789abcdef',
@@ -17,10 +22,9 @@ const ENVELOPE = {
 }
 
 describe('structured agent params', () => {
-  it('keeps normal question answers valid and bounds the combined answer body after schema extraction', () => {
+  it('accepts bounded question answers and rejects oversized combined bodies', () => {
     const base = { envelope: ENVELOPE, itemId: 'question-1', expectedRevision: 1 }
     const ordinary = { ...base, answers: [{ questionId: 'q1', optionIds: ['yes'], other: 'why' }] }
-    expect(() => RespondToQuestionParams.safeParse(ordinary)).not.toThrow()
     expect(RespondToQuestionParams.safeParse(ordinary).success).toBe(true)
     const oversized = {
       ...base,
@@ -32,6 +36,70 @@ describe('structured agent params', () => {
     }
     expect(RespondToQuestionParams.safeParse(oversized).success).toBe(false)
   })
+
+  it('rejects oversized scalar ids and invalid packed answers past the scalar bound', () => {
+    const base = { envelope: ENVELOPE, itemId: 'question-1', expectedRevision: 1 }
+    const answer = { questionId: 'q1', optionIds: ['yes'] }
+    const oversizedAnswers = Array.from({ length: 4 }, (_, index) => ({
+      questionId: `q${index + 1}`,
+      optionIds: [],
+      other: 'x'.repeat(AGENT_SESSION_QUESTION_ANSWER_MAX_BYTES)
+    }))
+    expect(JSON.stringify(oversizedAnswers).length).toBeGreaterThan(MAX_PROMPT_BYTES)
+    for (const optionId of [
+      'x'.repeat(MAX_RESPONSE_OPTION_ID_LENGTH + 1),
+      ' yes',
+      'yes ',
+      '\tyes\n',
+      `question-group:${'not-json'.repeat(MAX_RESPONSE_OPTION_ID_LENGTH)}`,
+      `question-group:%${' '.repeat(MAX_RESPONSE_OPTION_ID_LENGTH)}`,
+      `${encodeAgentSessionQuestionAnswers([])}${' '.repeat(MAX_RESPONSE_OPTION_ID_LENGTH)}`,
+      `${encodeAgentSessionQuestionAnswers(Array.from({ length: 5 }, () => answer))}${' '.repeat(MAX_RESPONSE_OPTION_ID_LENGTH)}`,
+      `${encodeAgentSessionQuestionAnswers([{ ...answer, optionIds: Array(65).fill('yes') }])}${' '.repeat(MAX_RESPONSE_OPTION_ID_LENGTH)}`,
+      encodeAgentSessionQuestionAnswers([{ ...answer, questionId: 'x'.repeat(1025) }]),
+      encodeAgentSessionQuestionAnswers([{ ...answer, optionIds: ['x'.repeat(1025)] }]),
+      encodeAgentSessionQuestionAnswers([
+        { ...answer, other: 'é'.repeat(AGENT_SESSION_QUESTION_ANSWER_MAX_BYTES) }
+      ]),
+      encodeAgentSessionQuestionAnswers(oversizedAnswers),
+      `question-group:${' '.repeat(MAX_PROMPT_BYTES * 3)}[]`
+    ]) {
+      expect(RespondToQuestionParams.safeParse({ ...base, optionId }).success).toBe(false)
+    }
+    expect(
+      RespondToQuestionParams.safeParse({
+        ...base,
+        optionId: 'x'.repeat(MAX_RESPONSE_OPTION_ID_LENGTH)
+      }).success
+    ).toBe(true)
+  })
+
+  it('preserves ordinary question option ids verbatim without accepting padding', () => {
+    const base = { envelope: ENVELOPE, itemId: 'question-1', expectedRevision: 1 }
+    for (const optionId of ['yes', 'question-group:custom']) {
+      expect(RespondToQuestionParams.parse({ ...base, optionId }).optionId).toBe(optionId)
+    }
+    expect(RespondToQuestionParams.safeParse({ ...base, optionId: ' yes ' }).success).toBe(false)
+  })
+
+  it('accepts current and fully percent-encoded packed answers within the structured byte budget', () => {
+    const answers = [
+      {
+        questionId: 'q1',
+        optionIds: [],
+        other: '%'.repeat(AGENT_SESSION_QUESTION_ANSWER_MAX_BYTES)
+      }
+    ]
+    const base = { envelope: ENVELOPE, itemId: 'question-1', expectedRevision: 1 }
+    for (const optionId of [
+      encodeAgentSessionQuestionAnswers(answers),
+      `question-group:${encodeURIComponent(JSON.stringify(answers))}`
+    ]) {
+      expect(optionId.length).toBeGreaterThan(MAX_RESPONSE_OPTION_ID_LENGTH)
+      expect(RespondToQuestionParams.parse({ ...base, optionId }).optionId).toBe(optionId)
+    }
+  })
+
   it('accepts only the same bounded user message a send accepts, with bounded options', () => {
     const body = { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'opening text' }] }
     const params = {

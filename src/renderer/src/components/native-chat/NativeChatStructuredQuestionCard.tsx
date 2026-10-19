@@ -7,6 +7,7 @@ export function NativeChatStructuredQuestionCard({
   questions,
   onAnswer,
   onCancel,
+  declineOptionId,
   isSubmitting,
   shouldFocus,
   answerInputRef
@@ -14,6 +15,7 @@ export function NativeChatStructuredQuestionCard({
   questions: readonly AgentJournalQuestion[]
   onAnswer: (response: AgentSessionPromptResponse) => void
   onCancel: () => void
+  declineOptionId?: string
   isSubmitting?: boolean
   shouldFocus?: boolean
   answerInputRef?: RefObject<HTMLInputElement | null>
@@ -27,7 +29,8 @@ export function NativeChatStructuredQuestionCard({
           multiSelect: question.multiSelect,
           options: question.options.map((option) => ({
             label: option.label,
-            ...(option.description ? { description: option.description } : {})
+            ...(option.description ? { description: option.description } : {}),
+            ...(option.exclusive ? { exclusive: true } : {})
           }))
         }))
       }}
@@ -43,7 +46,9 @@ export function NativeChatStructuredQuestionCard({
               const id = question.options[optionIndex]?.id
               return id ? [id] : []
             }),
-            ...(other !== undefined && (other.length > 0 || question.freeTextInput?.allowEmpty)
+            ...(other !== undefined &&
+            (other.length > 0 ||
+              (question.freeTextInput?.allowEmpty && answer?.indices?.length === 0))
               ? { other }
               : {})
           }
@@ -53,6 +58,9 @@ export function NativeChatStructuredQuestionCard({
         }
       }}
       onCancel={onCancel}
+      onDecline={
+        declineOptionId ? () => onAnswer({ kind: 'option', optionId: declineOptionId }) : undefined
+      }
       isSubmitting={isSubmitting}
       shouldFocus={shouldFocus}
       answerInputRef={answerInputRef}

@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import type { AgentJournalRenderItem } from '../../../src/shared/agent-session-journal-types'
 import {
   agentSessionPromptQuestions,
@@ -31,26 +32,26 @@ export type StructuredQuestionResponseTarget = {
   answer: AgentSessionQuestionAnswer
 }
 
-type PromptTokenPayload =
-  | {
-      kind: 'approval'
-      itemId: string
-      revision: number
-      optionId: string
-    }
-  | {
-      kind: 'question-option'
-      itemId: string
-      revision: number
-      questionId: string
-      optionId: string
-    }
-  | {
-      kind: 'question-free-text'
-      itemId: string
-      revision: number
-      questionId: string
-    }
+const promptIdentityFields = { itemId: z.string(), revision: z.number().finite() }
+const promptTokenSchema = z.discriminatedUnion('kind', [
+  z.object({
+    ...promptIdentityFields,
+    kind: z.enum(['approval', 'question-decline']),
+    optionId: z.string()
+  }),
+  z.object({
+    ...promptIdentityFields,
+    kind: z.literal('question-option'),
+    questionId: z.string(),
+    optionId: z.string()
+  }),
+  z.object({
+    ...promptIdentityFields,
+    kind: z.literal('question-free-text'),
+    questionId: z.string()
+  })
+])
+type PromptTokenPayload = z.infer<typeof promptTokenSchema>
 
 const STRUCTURED_PROMPT_TOKEN_PREFIX = 'structured-agent-prompt:'
 
@@ -70,54 +71,18 @@ function encodePromptToken(payload: PromptTokenPayload): string {
   return `${STRUCTURED_PROMPT_TOKEN_PREFIX}${encodeURIComponent(JSON.stringify(payload))}`
 }
 
-function decodePromptToken(value: string): PromptTokenPayload | null {
+export function decodeStructuredPromptToken(value: string): PromptTokenPayload | null {
   if (!value.startsWith(STRUCTURED_PROMPT_TOKEN_PREFIX)) {
     return null
   }
   try {
-    const decoded = JSON.parse(
-      decodeURIComponent(value.slice(STRUCTURED_PROMPT_TOKEN_PREFIX.length))
-    ) as Record<string, unknown>
-    if (
-      typeof decoded.itemId !== 'string' ||
-      typeof decoded.revision !== 'number' ||
-      !Number.isFinite(decoded.revision)
-    ) {
-      return null
-    }
-    if (decoded.kind === 'approval' && typeof decoded.optionId === 'string') {
-      return {
-        kind: decoded.kind,
-        itemId: decoded.itemId,
-        revision: decoded.revision,
-        optionId: decoded.optionId
-      }
-    }
-    if (
-      decoded.kind === 'question-option' &&
-      typeof decoded.questionId === 'string' &&
-      typeof decoded.optionId === 'string'
-    ) {
-      return {
-        kind: decoded.kind,
-        itemId: decoded.itemId,
-        revision: decoded.revision,
-        questionId: decoded.questionId,
-        optionId: decoded.optionId
-      }
-    }
-    if (decoded.kind === 'question-free-text' && typeof decoded.questionId === 'string') {
-      return {
-        kind: decoded.kind,
-        itemId: decoded.itemId,
-        revision: decoded.revision,
-        questionId: decoded.questionId
-      }
-    }
+    const parsed = promptTokenSchema.safeParse(
+      JSON.parse(decodeURIComponent(value.slice(STRUCTURED_PROMPT_TOKEN_PREFIX.length)))
+    )
+    return parsed.success ? parsed.data : null
   } catch {
     return null
   }
-  return null
 }
 
 function decodeQuestionFreeTextAnswer(value: string): {
@@ -131,7 +96,7 @@ function decodeQuestionFreeTextAnswer(value: string): {
   if (separator === -1) {
     return null
   }
-  const payload = decodePromptToken(value.slice(0, separator))
+  const payload = decodeStructuredPromptToken(value.slice(0, separator))
   if (payload?.kind !== 'question-free-text') {
     return null
   }
@@ -172,13 +137,22 @@ export function projectStructuredQuestion(
   if (prompt?.body.kind !== 'question') {
     return null
   }
+  const declineToken = prompt.body.declineOptionId
+    ? encodePromptToken({
+        kind: 'question-decline',
+        itemId: prompt.itemId,
+        revision: prompt.revision,
+        optionId: prompt.body.declineOptionId
+      })
+    : undefined
   if (prompt.body.questions) {
-    return projectGroupedQuestion(
+    const projected = projectGroupedQuestion(
       prompt.body.questions,
       groupedDraft,
       groupedQuestionPromptKey(prompt.itemId, prompt.revision),
       { itemId: prompt.itemId, expectedRevision: prompt.revision }
     )
+    return projected && declineToken ? { ...projected, declineToken } : projected
   }
   const [question] = agentSessionPromptQuestions(prompt.body)
   if (!question) {
@@ -190,6 +164,10 @@ export function projectStructuredQuestion(
     prompt: { itemId: prompt.itemId, expectedRevision: prompt.revision },
     options: prompt.body.options.map((option) => option.label),
     ...(optionDescriptions.some(Boolean) ? { optionDescriptions } : {}),
+    ...(declineToken ? { declineToken } : {}),
+    ...(prompt.body.options.some((option) => option.exclusive)
+      ? { optionExclusive: prompt.body.options.map((option) => option.exclusive === true) }
+      : {}),
     multiSelect: false,
     allowOther: Boolean(prompt.body.freeTextQuestionId),
     ...(prompt.body.freeTextInput ? { freeTextInput: prompt.body.freeTextInput } : {}),
@@ -219,7 +197,7 @@ export function structuredApprovalResponseTarget(
   response: string,
   currentPrompt: StructuredApprovalItem | null
 ): StructuredPromptResponseTarget | null {
-  const token = decodePromptToken(response)
+  const token = decodeStructuredPromptToken(response)
   if (token?.kind === 'approval') {
     return {
       itemId: token.itemId,
@@ -246,7 +224,7 @@ export function structuredQuestionResponseTarget(
   response: string,
   currentPrompt: StructuredQuestionItem | null
 ): StructuredQuestionResponseTarget | null {
-  const token = decodePromptToken(response)
+  const token = decodeStructuredPromptToken(response)
   if (token?.kind === 'question-option') {
     return {
       itemId: token.itemId,
