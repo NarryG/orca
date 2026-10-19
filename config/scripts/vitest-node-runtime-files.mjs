@@ -38,6 +38,10 @@ export const NODE_RUNTIME_INCLUDE = [
   'src/**/node-pty-*.test.ts',
   'src/**/*.live-shell.test.ts',
   'src/**/*real-pty*.test.ts',
+  // These live-PTY suites do not match the native filename patterns.
+  'src/main/daemon/repro-13767-shell-ready-marker-lost-to-exec.test.ts',
+  'src/main/daemon/shell-ready.test.ts',
+  'src/main/shell-startup-feature-channel.test.ts',
   'src/**/*-native.test.ts',
   'src/**/*retention*.test.ts',
   'src/**/*lifetime*.test.ts',
