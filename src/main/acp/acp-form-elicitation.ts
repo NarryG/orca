@@ -127,7 +127,7 @@ export function acpFormPresentation(params: unknown): AcpRequestPresentation {
         ? [
             ...choices.map((choice, choiceIndex) => ({
               id: `o${choiceIndex + 1}`,
-              label: choice.title ?? choice.const,
+              label: (choice.title ?? choice.const) || 'Empty value',
               ...(choice.description ? { description: choice.description } : {})
             })),
             ...(property.type === 'array'

@@ -27,6 +27,8 @@ When Claude shows an **AskUserQuestion** (or similar structured permission/quest
 
 OMP ACP forms use the same desktop and mobile cards for choices, text, and confirmations. Optional answers can be left unset; choosing an empty value or **No selections** is distinct from leaving a choice unset. **Decline request** replies to the form; **Cancel** dismisses the prompt and stops the turn. On desktop, **Skip** advances past an unanswered question without discarding other answers. On the final question it attempts submission if any answers exist, but all form questions must have an answer before submission; choose **Leave unset** for an optional choice. If no answers exist, clicking **Skip** dismisses the prompt and stops the turn. Full access does not answer these human decisions automatically.
 
+An offered empty-string choice without a label appears as **Empty value**; selecting it still sends an empty string, not an omitted answer.
+
 Stopping the turn withdraws its open cards and rejects late answers. OMP versions whose ACP transport does not send a form-cancellation notification cannot notify Orca of their own dialog timeout; dismiss the remaining card or stop the turn.
 
 ## Availability
