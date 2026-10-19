@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: d0d3edd0f8cf8d4487ca85843b288b14c9c7ee43
+          ref: 998c5ed1ee431b58ad3923d48bfcd09dbca07657
           persist-credentials: false
           fetch-depth: 1
       - name: Fetch explicit compatibility baselines
@@ -98,20 +98,21 @@ jobs:
           done < "$RUNNER_TEMP/compaudit-paths"
           zsh -fc 'autoload -Uz compaudit; compaudit'
       - name: Verify exact candidate source
-        run: test "$(git rev-parse HEAD)" = d0d3edd0f8cf8d4487ca85843b288b14c9c7ee43
+        run: test "$(git rev-parse HEAD)" = 998c5ed1ee431b58ad3923d48bfcd09dbca07657
       - name: Verify native shell contracts before the full run
         run: |
-          xvfb-run --auto-servernum pnpm test:node --maxWorkers=4 \
+          xvfb-run --auto-servernum pnpm test --maxWorkers=4 \
             src/main/shell-startup-feature-channel.test.ts \
             src/main/daemon/shell-ready.test.ts \
             src/main/daemon/repro-13767-shell-ready-marker-lost-to-exec.test.ts \
             src/main/daemon/agent-startup-prompt-latency.node-pty.test.ts \
             src/main/providers/startup-line-typed-length.live-shell.test.ts \
             src/main/providers/local-pty-shell-startup-command.node-pty.test.ts \
-            src/main/runtime/launched-agent-crash-guard.live-shell.test.ts
-      - name: Full documented Node-only test command
+            src/main/runtime/launched-agent-crash-guard.live-shell.test.ts \
+            src/main/emulator/serve-sim-kill-contract.test.ts
+      - name: Full required test command
         id: full-tests
-        run: xvfb-run --auto-servernum pnpm test:node --maxWorkers=4
+        run: xvfb-run --auto-servernum pnpm test --maxWorkers=4
       - name: Compare known platform assertions on unchanged baseline
         if: failure() && steps.full-tests.outcome == 'failure'
         run: |
