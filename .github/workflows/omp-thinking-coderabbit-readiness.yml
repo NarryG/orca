@@ -17,7 +17,7 @@ jobs:
         shard: [1, 2, 3, 4]
         candidate:
           - topic: thinking
-            sha: d4379a86532323069ccf53c0305d292ac2c19656
+            sha: 084226c1debbe8c6bc9295a055c71af6c25e2d9b
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
       CI: '1'
@@ -91,7 +91,7 @@ jobs:
         run: pnpm typecheck
       - name: Changed-code quality
         if: matrix.shard == 1
-        run: node config/scripts/check-changed-code-quality.mjs c68c84f15778549fcd831a63413a364ffaefb5c0
+        run: node config/scripts/check-changed-code-quality.mjs 59a9da22a0c6086a86c223534b36a6498eaf1b0a
       - name: Install Electron runtime
         run: node config/scripts/install-electron-package-binary.mjs
       - name: Install relay prerequisites
