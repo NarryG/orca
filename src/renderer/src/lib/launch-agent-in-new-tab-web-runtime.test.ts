@@ -98,6 +98,7 @@ describe('launchAgentInNewTab paired web runtime', () => {
         pasteDraftAfterLaunch: false
       })
     )
+
     expect(mocks.createTab).not.toHaveBeenCalled()
     await Promise.resolve()
     // Why: host creation is async, so the user may be viewing another worktree by the time it lands.
