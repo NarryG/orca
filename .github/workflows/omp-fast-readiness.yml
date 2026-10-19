@@ -1,4 +1,4 @@
-name: OMP fast candidate readiness
+name: OMP candidate contribution readiness
 on:
   push:
     branches:
@@ -6,19 +6,30 @@ on:
 permissions:
   contents: read
 jobs:
-  full-suite:
+  required-linux:
+    name: Linux required checks (${{ matrix.topic }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        include:
+          - topic: fast
+            candidate: 20f5c5e2ab03d68a505d2668511c133017e973ac
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
       CI: '1'
       TERM: xterm-256color
+      EXPECTED_HEAD: ${{ matrix.candidate }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: 998c5ed1ee431b58ad3923d48bfcd09dbca07657
+          ref: ${{ matrix.candidate }}
           persist-credentials: false
           fetch-depth: 1
+      - name: Verify exact candidate source
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
       - name: Fetch explicit compatibility baselines
         run: |
           git remote add readiness-upstream https://github.com/stablyai/orca.git
@@ -47,7 +58,8 @@ jobs:
             e817b0e23747ffd6f16f2ddefea861950d82a3c0:refs/orca-readiness/history/e817b0e237 \
             3727100cc9dbcea6201f8a3e506676a3c4b53b18:refs/orca-readiness/history/3727100cc9 \
             b6b4d68cd844c921c7c5191cef72d5adafc0dafa:refs/orca-readiness/history/b6b4d68cd8 \
-            6fcc183ab951fb751cf02ccb9e2af3cf129a4316:refs/orca-readiness/baseline
+            6fcc183ab951fb751cf02ccb9e2af3cf129a4316:refs/orca-readiness/original-baseline \
+            51530bb86cb2f799fb5162840654c64d9ff48fb2:refs/orca-readiness/baseline
       - uses: ./.github/actions/install-node-dependencies
         with:
           native-runtime: node
@@ -56,7 +68,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version-file: config/.bun-version
-      - name: Install CI shell and display prerequisites
+      - name: Install native Linux shell and display prerequisites
         run: |
           sudo add-apt-repository --yes --no-update ppa:fish-shell/release-4
           sudo apt-get update
@@ -65,13 +77,19 @@ jobs:
           major="${version##*version }"
           major="${major%%.*}"
           test "$major" -ge 4
-          kernel="$(uname -r)"
-          case "$kernel" in *[Mm]icrosoft*|*[Ww][Ss][Ll]*) echo 'Native Linux kernel required'; exit 1;; esac
-          printf '%s\n' "$version" "$kernel"
+          case "$(uname -r)" in *[Mm]icrosoft*|*[Ww][Ss][Ll]*) exit 1;; esac
+          printf '%s\n' "$version"
           git --version
           node --version
           bun --version
           git init --ref-format=reftable "$RUNNER_TEMP/reftable-probe"
+      - name: Full required lint before mobile installation
+        run: pnpm lint
+      - uses: ./.github/actions/install-mobile-dependencies
+      - name: Full required typecheck
+        run: pnpm typecheck
+      - name: Changed-code quality against pinned upstream
+        run: node config/scripts/check-changed-code-quality.mjs 51530bb86cb2f799fb5162840654c64d9ff48fb2
       - name: Install Electron binary
         run: node config/scripts/install-electron-package-binary.mjs
       - name: Install relay integration prerequisites
@@ -89,42 +107,10 @@ jobs:
           while IFS= read -r directory; do
             test -n "$directory" || continue
             case "$directory" in
-              /usr/local/share|/usr/local/share/zsh|/usr/local/share/zsh/*|/usr/share/zsh|/usr/share/zsh/*)
-                printf 'Securing completion path: %s\n' "$directory"
-                sudo chmod go-w -- "$directory"
-                ;;
+              /usr/local/share|/usr/local/share/zsh|/usr/local/share/zsh/*|/usr/share/zsh|/usr/share/zsh/*) sudo chmod go-w -- "$directory";;
               *) printf 'Unexpected insecure completion path: %s\n' "$directory"; exit 1;;
             esac
           done < "$RUNNER_TEMP/compaudit-paths"
           zsh -fc 'autoload -Uz compaudit; compaudit'
-      - name: Verify exact candidate source
-        run: test "$(git rev-parse HEAD)" = 998c5ed1ee431b58ad3923d48bfcd09dbca07657
-      - name: Verify native shell contracts before the full run
-        run: |
-          xvfb-run --auto-servernum pnpm test --maxWorkers=4 \
-            src/main/shell-startup-feature-channel.test.ts \
-            src/main/daemon/shell-ready.test.ts \
-            src/main/daemon/repro-13767-shell-ready-marker-lost-to-exec.test.ts \
-            src/main/daemon/agent-startup-prompt-latency.node-pty.test.ts \
-            src/main/providers/startup-line-typed-length.live-shell.test.ts \
-            src/main/providers/local-pty-shell-startup-command.node-pty.test.ts \
-            src/main/runtime/launched-agent-crash-guard.live-shell.test.ts \
-            src/main/emulator/serve-sim-kill-contract.test.ts
-      - name: Full required test command
-        id: full-tests
+      - name: Full required test command, unfiltered
         run: xvfb-run --auto-servernum pnpm test --maxWorkers=4
-      - name: Compare known platform assertions on unchanged baseline
-        if: failure() && steps.full-tests.outcome == 'failure'
-        run: |
-          git checkout --detach 6fcc183ab951fb751cf02ccb9e2af3cf129a4316
-          xvfb-run --auto-servernum pnpm test:node --maxWorkers=1 \
-            src/main/fish-xdg-data-dirs-handoff.test.ts \
-            src/main/shell-startup-feature-channel.test.ts \
-            src/main/daemon/shell-ready.test.ts \
-            src/main/daemon/repro-13767-shell-ready-marker-lost-to-exec.test.ts \
-            src/main/antigravity/native-credential-backend.test.ts \
-            src/main/git/merge-tree-object-quarantine-real-git.test.ts \
-            config/scripts/pty-transcript-secret-scan.test.mjs \
-            src/shared/claude-shell-function.test.ts \
-            src/shared/startup-command-staging.node-pty.test.ts \
-            src/main/ssh/ssh-relay-endpoint-incumbent-shell.integration.test.ts
