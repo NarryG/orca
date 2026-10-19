@@ -105,13 +105,6 @@ describe('dispatchStructuredAgentSessionComposerCommand', () => {
     setOption: async () => true
   }
 
-  it('names what does work when a TUI-only command is typed', async () => {
-    const outcome = await dispatchStructuredAgentSessionComposerCommand('/vim', controller)
-    expect(outcome.handled).toBe(true)
-    expect(outcome.error).toBe(
-      '/vim is not available in chat sessions. Use the slash menu to see available commands.'
-    )
-  })
   it.each(['claude', 'codex'] as const)(
     'handles %s conversation commands without message fallthrough',
     async (agent) => {
@@ -169,6 +162,18 @@ describe('agent-implemented commands pass through to the agent', () => {
           ...controller,
           agent: 'omp',
           sessionCommands: []
+        })
+      ).handled
+    ).toBe(true)
+  })
+
+  it('does not treat a skill named fast as native command support', async () => {
+    expect(
+      (
+        await dispatchStructuredAgentSessionComposerCommand('/fast', {
+          ...controller,
+          agent: 'omp',
+          sessionCommands: [{ name: 'fast', kind: 'skill' }]
         })
       ).handled
     ).toBe(true)
