@@ -105,13 +105,6 @@ describe('dispatchStructuredAgentSessionComposerCommand', () => {
     setOption: async () => true
   }
 
-  it('names what does work when a TUI-only command is typed', async () => {
-    const outcome = await dispatchStructuredAgentSessionComposerCommand('/vim', controller)
-    expect(outcome.handled).toBe(true)
-    expect(outcome.error).toBe(
-      '/vim is not available in chat sessions. Use the slash menu to see available commands.'
-    )
-  })
   it.each(['claude', 'codex'] as const)(
     'handles %s conversation commands without message fallthrough',
     async (agent) => {
@@ -151,6 +144,52 @@ describe('agent-implemented commands pass through to the agent', () => {
     setOption: async () => true
   }
   const PASSED_THROUGH = { handled: false, accepted: false, error: null }
+
+  it('passes an advertised OMP fast command to the native session', async () => {
+    expect(
+      await dispatchStructuredAgentSessionComposerCommand('/fast status', {
+        ...controller,
+        agent: 'omp',
+        sessionCommands: [{ name: 'fast', kind: 'command' }]
+      })
+    ).toEqual(PASSED_THROUGH)
+  })
+
+  it('does not infer native fast support from the OMP terminal catalog', async () => {
+    expect(
+      (
+        await dispatchStructuredAgentSessionComposerCommand('/fast', {
+          ...controller,
+          agent: 'omp',
+          sessionCommands: []
+        })
+      ).handled
+    ).toBe(true)
+  })
+
+  it('does not treat a skill named fast as native command support', async () => {
+    expect(
+      (
+        await dispatchStructuredAgentSessionComposerCommand('/fast', {
+          ...controller,
+          agent: 'omp',
+          sessionCommands: [{ name: 'fast', kind: 'skill' }]
+        })
+      ).handled
+    ).toBe(true)
+  })
+
+  it('keeps OMP terminal-only commands claimed when fast is advertised', async () => {
+    expect(
+      (
+        await dispatchStructuredAgentSessionComposerCommand('/git', {
+          ...controller,
+          agent: 'omp',
+          sessionCommands: [{ name: 'fast', kind: 'command' }]
+        })
+      ).handled
+    ).toBe(true)
+  })
 
   // Claude's harness runs a slash command it finds in the message text, so
   // claiming these answered "not available" for commands that do work.

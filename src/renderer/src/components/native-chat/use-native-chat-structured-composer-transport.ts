@@ -60,6 +60,7 @@ export function useNativeChatStructuredComposerTransport(args: {
       dispatchCommand: (text: string) =>
         dispatchStructuredAgentSessionComposerCommand(text, {
           agent: props.agent,
+          sessionCommands: controller.sessionCommands,
           snapshot: controller.optionSnapshot,
           invokeAction: async (id) => {
             setOptionPickerRequest({ id, consume: () => setOptionPickerRequest(null) })
