@@ -17,7 +17,7 @@ jobs:
         shard: [1, 2, 3, 4]
         candidate:
           - topic: thinking
-            sha: 659942877e7d18eb50bec95eee7039276f7b7c72
+            sha: 037994d97a50f8a707cd9cd6d72e5be9ce933b4f
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
       CI: '1'
