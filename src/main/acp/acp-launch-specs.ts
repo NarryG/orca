@@ -286,6 +286,7 @@ const OMP_LAUNCH_SPEC: AcpLaunchSpec = {
   },
   visualsSkill: loadOmpVisualsSkill,
   compaction: true,
+  imagePrompts: true,
   transcriptImport: OMP_TRANSCRIPT_IMPORT,
   sessionHistory: OMP_SESSION_HISTORY
 }
