@@ -162,6 +162,8 @@ export async function createWebRuntimeSessionTerminalResult(
         terminal: CreatedAgentTerminalIdentity
       }>({
         environmentId,
+        agent,
+        launchPreferences: args.launchPreferences,
         ...(hostAuthority ? { hostAuthority } : {}),
         ...(resumeHostAuthorityCapability
           ? { hostAuthorityCapability: resumeHostAuthorityCapability }

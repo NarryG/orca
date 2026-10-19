@@ -89,7 +89,10 @@ import {
 import { listRemoteRuntimeSessionTabsAfterCurrentInFlight } from '@/runtime/remote-runtime-session-tabs-inflight'
 import { subscribeAcceptedWebSessionTerminalHandle } from '@/runtime/web-session-terminal-handle-events'
 import { hostSnapshotAffirmsWorktreeContents } from '@/runtime/host-session-snapshot-authority'
-import { runRemoteAgentSessionLaunch } from '@/runtime/remote-agent-session-launch'
+import {
+  assertRemoteAgentThinkingSupported,
+  runRemoteAgentSessionLaunch
+} from '@/runtime/remote-agent-session-launch'
 import { useAppStore } from '@/store'
 import { recordWebAgentSessionHandoff } from '@/runtime/web-agent-session-handoff'
 import { refreshWebRuntimeSessionTabsSnapshot } from '@/runtime/web-runtime-session-snapshot'
@@ -3184,11 +3187,20 @@ export function createRemoteRuntimePtyTransport(
       const resumeHostAuthorityCapability = resumeProviderSessionToSend
         ? agentResumeHostAuthorityCapability(launchAgentToSend)
         : undefined
+      if (launchAgentToSend && agentSessionRequiresHostAuthorityReplay) {
+        await assertRemoteAgentThinkingSupported({
+          environmentId: createEnvironmentId,
+          agent: launchAgentToSend,
+          launchPreferences: agentLaunchPreferences
+        })
+      }
       const created = launchAgentToSend
         ? agentSessionRequiresHostAuthorityReplay
           ? await hostAuthorityCreate()
           : await runRemoteAgentSessionLaunch<RemoteAgentSessionLaunchResult | null>({
               environmentId: createEnvironmentId,
+              agent: launchAgentToSend,
+              launchPreferences: agentLaunchPreferences,
               hostAuthority: hostAuthorityCreate,
               ...(resumeHostAuthorityCapability
                 ? { hostAuthorityCapability: resumeHostAuthorityCapability }
