@@ -202,6 +202,25 @@ describe('ACP form questions', () => {
     ).toEqual({ action: 'accept', content: { value: 'value' } })
   })
 
+  it.each([
+    { type: 'string', enum: ['', 'nonempty'] },
+    { type: 'string', oneOf: [{ const: '', title: 'Empty value' }] }
+  ])('preserves an explicitly chosen empty optional value: %j', (property) => {
+    const presentation = acpFormPresentation(form({ value: property }))
+    expect(
+      presentation.reply({
+        kind: 'answers',
+        answers: [{ questionId: 'q1', optionIds: ['o1'] }]
+      })
+    ).toEqual({ action: 'accept', content: { value: '' } })
+    expect(
+      presentation.reply({
+        kind: 'answers',
+        answers: [{ questionId: 'q1', optionIds: ['omit'] }]
+      })
+    ).toEqual({ action: 'accept', content: {} })
+  })
+
   it('distinguishes empty required and optional arrays from an omitted property', () => {
     const answer = (required: boolean, optionId: string) => {
       const presentation = acpFormPresentation(

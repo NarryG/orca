@@ -205,7 +205,7 @@ export function acpFormPresentation(params: unknown): AcpRequestPresentation {
           content[field.key] = values[0] === 'true'
         } else if (field.property.type === 'string') {
           const value = values[0] ?? answer.other ?? ''
-          if (required.has(field.key) || value !== '') {
+          if (required.has(field.key) || values.length > 0 || value !== '') {
             content[field.key] = value
           }
         } else {
