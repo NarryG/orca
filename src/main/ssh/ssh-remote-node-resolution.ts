@@ -1,4 +1,4 @@
-import type { SshConnection } from './ssh-connection'
+import type { SshConnection } from './connection/ssh-connection'
 import { createSshOperationAbortError } from './ssh-connection-utils'
 import type { RemoteHostPlatform } from './ssh-remote-platform'
 import { isWindowsRemoteHost, normalizeWindowsRemotePath } from './ssh-remote-platform'
@@ -7,7 +7,7 @@ import {
   buildPosixNodeInstallGuidance,
   type RemoteNodeResolutionOptions
 } from './ssh-remote-node-install-guidance'
-import { execCommand, isSshCommandExitError } from './ssh-relay-exec-command'
+import { execCommand, isSshCommandExitError } from './remote-exec/remote-exec-command'
 import {
   buildPosixNodeToolchainProbe,
   buildWindowsNodeToolchainProbe,
