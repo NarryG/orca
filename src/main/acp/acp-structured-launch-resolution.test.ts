@@ -62,13 +62,17 @@ function journalWithTurns(...providerSessions: string[]): JournalLoad {
   return { state, newer: null, damage: null }
 }
 
-function resolver(record: AgentSessionRecord, readJournal: () => JournalLoad | null = () => null) {
+function resolver(
+  record: AgentSessionRecord,
+  readJournal: () => JournalLoad | null = () => null,
+  environment: Record<string, string> = { PATH: '/usr/bin', HOME: '/home/user' }
+) {
   return {
     resolve: createAcpStructuredLaunchResolver(GROK, {
       store: { getRecord: () => record, pinLaunchDirectory: vi.fn() },
       readJournal,
       resolveWorkspacePath: async () => '/repo/worktree',
-      resolveEnvironment: async () => ({ PATH: '/usr/bin', HOME: '/home/user' }),
+      resolveEnvironment: async () => environment,
       resolveLaunchEnv: () => ({ GROK_EXTRA: '1' }),
       resolveCommand: (command) => `/resolved/${command}`
     })
@@ -76,6 +80,17 @@ function resolver(record: AgentSessionRecord, readJournal: () => JournalLoad | n
 }
 
 describe('ACP launch resolution', () => {
+  it('keeps the sealed account home when the ambient environment names another account', async () => {
+    const accountHome = { variable: 'GROK_HOME', path: '/accounts/work' }
+    const launch = await resolver(grokRecord({ accountHome }), undefined, {
+      PATH: '/usr/bin',
+      HOME: '/accounts/personal',
+      GROK_HOME: '/accounts/personal/.grok'
+    }).resolve({ identity })
+
+    expect(launch.env.GROK_HOME).toBe(accountHome.path)
+  })
+
   it('creates a new ACP session after clear instead of probing the old session', async () => {
     const value = grokRecord({
       providerContextBoundary: { operationId: 'clear', afterFence: 2, clearedAt: 100 },
