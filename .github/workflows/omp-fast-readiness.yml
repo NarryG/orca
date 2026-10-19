@@ -7,33 +7,36 @@ permissions:
   contents: read
 jobs:
   required-linux:
-    name: Linux required checks (${{ matrix.topic }})
+    name: Linux checks (${{ matrix.candidate.topic }}, shard ${{ matrix.shard }}/4)
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     strategy:
       fail-fast: false
-      max-parallel: 5
+      max-parallel: 20
       matrix:
-        include:
+        shard: [1, 2, 3, 4]
+        candidate:
           - topic: images
-            candidate: 451b544e9914fa0357f3c8cb5c713c2c38764fdc
+            sha: 451b544e9914fa0357f3c8cb5c713c2c38764fdc
           - topic: forms
-            candidate: ba813a8373d5e43ca14001147f279019dbab58b4
+            sha: de98384610a76b3f28fe5cfd1be31572646ac50c
           - topic: recovery
-            candidate: e4e008065f3b97e1ff93648c469dc0f5cd6d37c0
+            sha: e4e008065f3b97e1ff93648c469dc0f5cd6d37c0
           - topic: thinking
-            candidate: 8da780c0801c34f76e22392e8f552491e844ea23
+            sha: 8da780c0801c34f76e22392e8f552491e844ea23
           - topic: fast
-            candidate: 20f5c5e2ab03d68a505d2668511c133017e973ac
+            sha: 20f5c5e2ab03d68a505d2668511c133017e973ac
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
       CI: '1'
       TERM: xterm-256color
-      EXPECTED_HEAD: ${{ matrix.candidate }}
+      EXPECTED_HEAD: ${{ matrix.candidate.sha }}
+      ORCA_BALANCE_UNIT_SHARDS: '1'
+      ORCA_SHARD_SOURCE_SHA: ${{ matrix.candidate.sha }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ matrix.candidate }}
+          ref: ${{ matrix.candidate.sha }}
           persist-credentials: false
           fetch-depth: 8
       - name: Verify exact candidate source
@@ -92,11 +95,14 @@ jobs:
           bun --version
           git init --ref-format=reftable "$RUNNER_TEMP/reftable-probe"
       - name: Full required lint before mobile installation
+        if: matrix.shard == 1
         run: pnpm lint
       - uses: ./.github/actions/install-mobile-dependencies
       - name: Full required typecheck
+        if: matrix.shard == 1
         run: pnpm typecheck
       - name: Changed-code quality against pinned upstream
+        if: matrix.shard == 1
         run: node config/scripts/check-changed-code-quality.mjs 51530bb86cb2f799fb5162840654c64d9ff48fb2
       - name: Install Electron binary
         run: node config/scripts/install-electron-package-binary.mjs
@@ -120,5 +126,5 @@ jobs:
             esac
           done < "$RUNNER_TEMP/compaudit-paths"
           zsh -fc 'autoload -Uz compaudit; compaudit'
-      - name: Full required test command, unfiltered
-        run: xvfb-run --auto-servernum pnpm test --maxWorkers=4
+      - name: Full required suite shard (no file filters or exclusions)
+        run: xvfb-run --auto-servernum pnpm test --maxWorkers=4 --shard=${{ matrix.shard }}/4
