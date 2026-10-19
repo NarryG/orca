@@ -12,14 +12,12 @@ jobs:
     timeout-minutes: 240
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: 4
       matrix:
         shard: [1, 2, 3, 4]
         candidate:
           - topic: thinking
-            sha: 8f04f20db685f419a1c937bfcb3b3f8f62253f51
-          - topic: forms
-            sha: ad2a53d4a0df9c804498c0503106e29ecae39457
+            sha: 659942877e7d18eb50bec95eee7039276f7b7c72
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
       CI: '1'
