@@ -3118,8 +3118,15 @@ export function createRemoteRuntimePtyTransport(
       const legacyCreate = () =>
         createWithUnknownOutcomeRecovery(
           'terminal',
-          (timeoutMs, reconcileExisting) =>
-            callRuntimeForEnvironment<{ terminal: RuntimeTerminalCreate }>(
+          async (timeoutMs, reconcileExisting) => {
+            if (launchAgentToSend === 'omp') {
+              await assertRemoteAgentThinkingSupported({
+                environmentId: createEnvironmentId,
+                agent: launchAgentToSend,
+                launchPreferences: agentLaunchPreferences
+              })
+            }
+            return callRuntimeForEnvironment<{ terminal: RuntimeTerminalCreate }>(
               createEnvironmentId,
               'terminal.create',
               {
@@ -3127,7 +3134,8 @@ export function createRemoteRuntimePtyTransport(
                 ...(reconcileExisting ? { reconcileExisting: true } : {})
               },
               timeoutMs
-            ),
+            )
+          },
           createEnvironmentId,
           connectLifecycleEpoch
         )
@@ -3296,7 +3304,11 @@ export function createRemoteRuntimePtyTransport(
         } else if (isRecoverablePaneBindingError(error)) {
           scheduleConnectRetryAfterRecoverableFailure()
         } else {
-          recovery.cancel()
+          if (terminalCreateNeedsReconciliation || agentSessionRequiresHostAuthorityReplay) {
+            recovery.markDisconnected()
+          } else {
+            recovery.cancel()
+          }
           emitRecoveryState()
           surfaceErrorMessage(message)
         }
