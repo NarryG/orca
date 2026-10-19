@@ -1,0 +1,123 @@
+name: OMP form context verification
+on:
+  push:
+    branches:
+      - validation/omp-forms-context-readiness-c68
+permissions:
+  contents: read
+jobs:
+  linux:
+    name: Draft Linux (${{ matrix.candidate.topic }}, shard ${{ matrix.shard }}/4)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [1, 2, 3, 4]
+        candidate:
+          - topic: forms
+            sha: cbee6dff82a24ce50daa7fb6b70106f7f72a5108
+    env:
+      ORCA_BACKGROUND_LAUNCH: '1'
+      CI: '1'
+      TERM: xterm-256color
+      EXPECTED_HEAD: ${{ matrix.candidate.sha }}
+      ORCA_BALANCE_UNIT_SHARDS: '1'
+      ORCA_SHARD_SOURCE_SHA: ${{ matrix.candidate.sha }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ matrix.candidate.sha }}
+          persist-credentials: false
+          fetch-depth: 8
+      - name: Verify exact candidate
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+      - name: Fetch explicit compatibility baselines
+        run: |
+          git remote add draft-upstream https://github.com/stablyai/orca.git
+          git fetch --depth=1 --no-tags draft-upstream \
+            refs/tags/v1.4.184:refs/tags/v1.4.184 \
+            refs/tags/v1.4.190:refs/tags/v1.4.190 \
+            refs/tags/v1.4.199:refs/tags/v1.4.199 \
+            refs/tags/v1.4.205:refs/tags/v1.4.205 \
+            refs/tags/v1.4.211:refs/tags/v1.4.211 \
+            refs/tags/v1.4.212:refs/tags/v1.4.212 \
+            refs/tags/v1.4.214:refs/tags/v1.4.214 \
+            refs/tags/v1.4.218:refs/tags/v1.4.218 \
+            refs/tags/v1.4.219:refs/tags/v1.4.219 \
+            refs/tags/v1.4.220:refs/tags/v1.4.220 \
+            refs/tags/v1.4.221:refs/tags/v1.4.221 \
+            refs/tags/v1.4.222:refs/tags/v1.4.222 \
+            refs/tags/v1.4.224:refs/tags/v1.4.224 \
+            refs/tags/v1.4.229:refs/tags/v1.4.229 \
+            4cb013c0a9251275fa3d20ea33b45429e07aa6be:refs/omp-drafts/history/4cb013c0a9 \
+            4bb337741c335cfcc428d3b4271023566e2dadb8:refs/omp-drafts/history/4bb337741c \
+            fd9125ea8c7b347cd8b675a4095e31cd3c865d25:refs/omp-drafts/history/fd9125ea8c \
+            5a56636f6679071d6ec68b851ef7932cd3222560:refs/omp-drafts/history/5a56636f66 \
+            aac38d698ff75ac4c8658addab48ef5a83617619:refs/omp-drafts/history/aac38d698f \
+            b49abdb1f4da6b3d62dfa9ccf3c74dc9e74d291c:refs/omp-drafts/history/b49abdb1f4 \
+            f97ca2a49d9c711dab54a656a7f8a47ae6c6749c:refs/omp-drafts/history/f97ca2a49d \
+            e817b0e23747ffd6f16f2ddefea861950d82a3c0:refs/omp-drafts/history/e817b0e237 \
+            3727100cc9dbcea6201f8a3e506676a3c4b53b18:refs/omp-drafts/history/3727100cc9 \
+            b6b4d68cd844c921c7c5191cef72d5adafc0dafa:refs/omp-drafts/history/b6b4d68cd8 \
+            6fcc183ab951fb751cf02ccb9e2af3cf129a4316:refs/omp-drafts/original-base \
+            51530bb86cb2f799fb5162840654c64d9ff48fb2:refs/omp-drafts/previous-base \
+            c68c84f15778549fcd831a63413a364ffaefb5c0:refs/omp-drafts/base
+      - uses: ./.github/actions/install-node-dependencies
+        with:
+          native-runtime: node
+          node-version: '24.21.0'
+          cache-electron-package: 'true'
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version-file: config/.bun-version
+      - name: Install shell and display prerequisites
+        run: |
+          sudo add-apt-repository --yes --no-update ppa:fish-shell/release-4
+          sudo apt-get update
+          sudo apt-get install -y zsh fish lsof xvfb xauth libgtk-3-0t64
+          version="$(fish --version)"
+          major="${version##*version }"
+          major="${major%%.*}"
+          test "$major" -ge 4
+          git init --ref-format=reftable "$RUNNER_TEMP/reftable-probe"
+      - name: Full lint
+        if: matrix.shard == 1
+        run: pnpm lint
+      - uses: ./.github/actions/install-mobile-dependencies
+      - name: Full typecheck
+        if: matrix.shard == 1
+        run: pnpm typecheck
+      - name: Changed-code quality
+        if: matrix.shard == 1
+        run: node config/scripts/check-changed-code-quality.mjs c68c84f15778549fcd831a63413a364ffaefb5c0
+      - name: Install Electron runtime
+        run: node config/scripts/install-electron-package-binary.mjs
+      - name: Install relay prerequisites
+        working-directory: cloud
+        run: |
+          npx --yes pnpm@10.34.6 --filter '@orca-cloud/relay...' install --frozen-lockfile --ignore-scripts
+          npx --yes pnpm@10.34.6 --filter '@orca-cloud/relay^...' build
+      - name: Install both matching browser SDKs
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          pnpm exec playwright-core install --with-deps chromium webkit
+          chrome="$(command -v google-chrome || command -v google-chrome-stable || true)"
+          test -n "$chrome"
+          echo "ORCA_MOBILE_WEB_RENDER_BROWSER=$chrome" >> "$GITHUB_ENV"
+      - name: Correct trusted zsh completion permissions
+        run: |
+          audit_status=0
+          zsh -fc 'autoload -Uz compaudit; compaudit' > "$RUNNER_TEMP/compaudit-paths" || audit_status=$?
+          test "$audit_status" -le 1
+          while IFS= read -r directory; do
+            test -n "$directory" || continue
+            case "$directory" in
+              /usr/local/share|/usr/local/share/zsh|/usr/local/share/zsh/*|/usr/share/zsh|/usr/share/zsh/*) sudo chmod go-w -- "$directory";;
+              *) printf 'Unexpected insecure completion path: %s\n' "$directory"; exit 1;;
+            esac
+          done < "$RUNNER_TEMP/compaudit-paths"
+          zsh -fc 'autoload -Uz compaudit; compaudit'
+      - name: Full canonical test shard
+        run: xvfb-run --auto-servernum pnpm test --maxWorkers=4 --shard=${{ matrix.shard }}/4
