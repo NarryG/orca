@@ -1,7 +1,7 @@
 import type { Readable, Writable } from 'node:stream'
 import { z } from 'zod'
 import { AcpRpcError } from './acp-errors'
-import { requestAcpResponse } from './acp-rpc-envelope'
+import { callAcpSession } from './acp-response-settlement'
 import { AcpJsonRpcPeer, type AcpPeerOptions, type AcpRequestContext } from './acp-json-rpc-peer'
 import {
   answerAcpPermission,
@@ -9,11 +9,8 @@ import {
   type AcpPermissionHandler
 } from './acp-permission-requests'
 import { readAcpSessionEvent, type AcpSessionEvent } from './acp-session-events'
-import {
-  setupAcpSession,
-  type AcpSessionStarted,
-  type AcpSessionStartOptions
-} from './acp-session-setup'
+import { setupAcpSession } from './acp-session-setup'
+import type { AcpSessionStarted, AcpSessionStartOptions } from './acp-session-setup'
 export type { AcpSessionStarted, AcpSessionStartOptions } from './acp-session-setup'
 export type { AcpSessionEvent } from './acp-session-events'
 import {
@@ -59,6 +56,10 @@ export type AcpSessionRuntimeOptions = {
   onExtensionNotification?: (method: string, params: unknown) => void
   onDiagnostic?: (message: string) => void
   onClose?: (error: Error) => void
+  /** A stdout line that is not a protocol message. */
+  onOtherLine?: (line: string, cut?: boolean) => void
+  /** Authentication answers, published synchronously as responses are accepted. */
+  onAuthAnswered?: (signedIn: boolean) => void
 }
 
 /** Stream-level protocol seam; production agents use createAcpAgentConnection. */
@@ -83,7 +84,8 @@ export class AcpSessionRuntime {
         onRequest: (method, params, context) => this.handleRequest(method, params, context),
         onNotification: (method, params) => this.handleNotification(method, params),
         onDiagnostic: options.onDiagnostic,
-        onClose: options.onClose
+        onClose: options.onClose,
+        onOtherLine: options.onOtherLine
       },
       options.peer
     )
@@ -101,8 +103,7 @@ export class AcpSessionRuntime {
   }
 
   initialize(): Promise<InitializeResponse> {
-    this.initialized ??= requestAcpResponse(
-      this.peer,
+    this.initialized ??= this.call(
       'initialize',
       {
         protocolVersion: ACP_PROTOCOL_VERSION,
@@ -137,7 +138,7 @@ export class AcpSessionRuntime {
 
   async authenticate(methodId: string): Promise<AuthenticateResponse> {
     await this.initialize()
-    return requestAcpResponse(this.peer, 'authenticate', { methodId }, AuthenticateResponseSchema)
+    return this.call('authenticate', { methodId }, AuthenticateResponseSchema)
   }
 
   /** A vendor extension method, answered as the agent sent it. Core methods have typed calls here,
@@ -154,9 +155,11 @@ export class AcpSessionRuntime {
    *  its id; this connection starts no session of its own. Ask only an agent that advertises it. */
   async forkSession(sessionId: string, cwd: string): Promise<string> {
     const params = { sessionId, cwd, mcpServers: [] }
-    return (await requestAcpResponse(this.peer, 'session/fork', params, ForkSessionResponseSchema))
-      .sessionId
+    return (await this.call('session/fork', params, ForkSessionResponseSchema)).sessionId
   }
+
+  /** Deletes saved session `sessionId` (`session/delete`). Ask only an agent that advertises it. */
+  deleteSession = (sessionId: string) => this.call('session/delete', { sessionId }, z.unknown())
 
   start(options: AcpSessionStartOptions): Promise<AcpSessionStarted> {
     if (this.started) {
@@ -165,7 +168,7 @@ export class AcpSessionRuntime {
     this.starting ??= this.initialize()
       .then((initialized) =>
         setupAcpSession(initialized, options, (method, params, schema) =>
-          requestAcpResponse(this.peer, method, params, schema)
+          this.call(method, params, schema)
         )
       )
       .then((started) => {
@@ -184,7 +187,7 @@ export class AcpSessionRuntime {
       throw new Error('ACP prompt already in progress')
     }
     const params: PromptRequest = { sessionId: this.sessionId(), prompt, ...withMeta(meta) }
-    const response = requestAcpResponse(this.peer, 'session/prompt', params, PromptResponseSchema)
+    const response = this.call('session/prompt', params, PromptResponseSchema)
     this.activePrompt = response
     try {
       return await response
@@ -209,7 +212,7 @@ export class AcpSessionRuntime {
 
   async setMode(modeId: string, meta?: Meta): Promise<SetSessionModeResponse> {
     const params: SetSessionModeRequest = { sessionId: this.sessionId(), modeId, ...withMeta(meta) }
-    return requestAcpResponse(this.peer, 'session/set_mode', params, SetSessionModeResponseSchema)
+    return this.call('session/set_mode', params, SetSessionModeResponseSchema)
   }
 
   /** Dialect-owned control requests share this session's transport and bounded lifetime. */
@@ -226,7 +229,7 @@ export class AcpSessionRuntime {
       modelId,
       ...withMeta(meta)
     }
-    return requestAcpResponse(this.peer, 'session/set_model', params, SetSessionModelResponseSchema)
+    return this.call('session/set_model', params, SetSessionModelResponseSchema)
   }
   async setConfigOption(
     configId: SetSessionConfigOptionRequest['configId'],
@@ -249,8 +252,7 @@ export class AcpSessionRuntime {
             sessionId,
             ...withMeta(meta)
           } satisfies SetSessionConfigOptionRequest)
-    return requestAcpResponse(
-      this.peer,
+    return this.call(
       'session/set_config_option',
       request,
       SetSessionConfigOptionResponseSchema
@@ -273,6 +275,9 @@ export class AcpSessionRuntime {
     return this.started.sessionId
   }
 
+  private call<T>(method: string, params: unknown, schema: z.ZodType<T>): Promise<T> {
+    return callAcpSession(this.peer, method, params, schema, this.options.onAuthAnswered)
+  }
   private handleRequest(method: string, params: unknown, context: AcpRequestContext): unknown {
     if (method !== 'session/request_permission') {
       if (!this.options.onRequest) {

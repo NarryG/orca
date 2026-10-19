@@ -24,7 +24,7 @@ import { resolveEnvironment } from '../../shared/runtime-environment-store'
 import { resolveTuiAgentLaunchEnv } from '../../shared/tui-agent-launch-defaults'
 import { getPreferredPairedRuntimeConnection } from '../../shared/runtime-environments'
 import { fingerprintOrchestrationPeer } from '../runtime/orchestration/environment-transport'
-import { callRuntimeEnvironment } from '../ipc/runtime-environment-transport-routing'
+import { callRuntimeEnvironment } from '../ipc/runtime-environments/runtime-environment-transport-routing'
 import { mainProcessState as state } from './main-process-state'
 import { installWslOrcadAccountShim } from './wsl-orcad-account-env-wiring'
 import {
@@ -146,7 +146,7 @@ export function initializeMainProcessRuntime(): OrcaRuntimeService {
     recordDurableCrashBreadcrumb('agent_state_rules_active', rules)
   )
   state.runtime = runtime
-  runtime.sidebarFacts?.workspaceActivityFacts.attachAgentStatusStore(agentHookServer)
+  runtime.sidebarFacts?.attachSidebarAgentStatusStore(agentHookServer)
   agentHookServer.subscribeEnrichedStatus((enriched) =>
     recordObservedAgentStatusPaneIdentity(observedPaneIdentities, enriched.paneKey, runtime)
   )

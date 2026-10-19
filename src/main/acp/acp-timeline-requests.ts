@@ -14,7 +14,11 @@ import { AcpRpcError } from './acp-errors'
 import { readAcpPermissionRequest } from './acp-permission-requests'
 import { acpFormPresentation, ACP_FORM_ELICITATION_METHOD } from './acp-form-elicitation'
 
-export function acpPermissionPresentation(params: unknown): AcpRequestPresentation {
+/** `description`: the agent's own words about what answering means, shown above the choices. */
+export function acpPermissionPresentation(
+  params: unknown,
+  description?: string
+): AcpRequestPresentation {
   // The runtime already read this request and reported any field it dropped.
   const request = readAcpPermissionRequest(params, () => {})
   if (!request) {
@@ -25,6 +29,7 @@ export function acpPermissionPresentation(params: unknown): AcpRequestPresentati
     body: {
       kind: 'approval',
       title: toolCall.title ?? 'Permission requested',
+      ...(description ? { description } : {}),
       detail: null,
       options: options.map((option) => ({
         id: option.optionId,

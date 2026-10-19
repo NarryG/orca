@@ -1,6 +1,5 @@
 import { z } from 'zod'
-import { AcpAgentError, AcpAuthRequiredError, AcpInvalidResponseError } from './acp-errors'
-import type { AcpJsonRpcPeer } from './acp-json-rpc-peer'
+import { AcpAgentError, AcpInvalidResponseError } from './acp-errors'
 
 const idSchema = z.union([z.string(), z.number(), z.null()])
 const errorSchema = z.object({
@@ -41,25 +40,3 @@ export function settleAcpResponse(
   }
 }
 
-export async function requestAcpResponse<T>(
-  peer: Pick<AcpJsonRpcPeer, 'request'>,
-  method: string,
-  params: unknown,
-  schema: z.ZodType<T>
-): Promise<T> {
-  const result = await peer.request(method, params, { timeoutMs: null }).catch((error) => {
-    if (error instanceof AcpAgentError && error.code === -32000) {
-      throw new AcpAuthRequiredError(error.message, error.data)
-    }
-    throw error
-  })
-  const parsed = schema.safeParse(result)
-  if (!parsed.success) {
-    throw new AcpInvalidResponseError(
-      `Invalid ACP response: ${method}`,
-      result,
-      parsed.error.issues
-    )
-  }
-  return parsed.data
-}
