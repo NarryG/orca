@@ -7,11 +7,7 @@ const discoveryResult = z.object({
   success: z.literal(true),
   catalogOrigin: z.literal('probe'),
   models: z.array(
-    z.object({
-      id: z.string().min(1),
-      label: z.string(),
-      description: z.string().optional()
-    })
+    z.object({ id: z.string().min(1), label: z.string(), description: z.string().optional() })
   )
 })
 
@@ -25,12 +21,7 @@ const discoverOmpModels = defineRpcOperation({
     return {
       compatible: true as const,
       variant: 'configured-models' as const,
-      value: parsed.success
-        ? parsed.data.models.map((model) => ({
-            ...model,
-            options: []
-          }))
-        : null,
+      value: parsed.success ? parsed.data.models.map((model) => ({ ...model, options: [] })) : null,
       salvage: { droppedPaths: [], droppedCount: 0 }
     }
   }
