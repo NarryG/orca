@@ -10,6 +10,7 @@ import type { NativeChatResolvedPrompt } from '../../../src/shared/native-chat-r
 import type { useMobileStructuredAgentOptions } from './use-mobile-structured-agent-options'
 import type { useMobileStructuredAgentTurnTiming } from './use-mobile-structured-agent-turn-timing'
 import type { StructuredMobileSendAttachment } from './use-mobile-structured-send-with-outcome'
+import type { AgentSessionSlashCommand } from '../../../src/shared/agent-session-wire'
 import type {
   MobileNativeChatCommandRefusalCauses,
   MobileNativeChatSendErrorReporter
@@ -20,6 +21,7 @@ import type { MobileStructuredBackgroundTasks } from './use-mobile-structured-ba
 export type StructuredMobileSession = ReturnType<typeof useMobileStructuredAgentOptions> &
   ReturnType<typeof useMobileStructuredAgentTurnTiming> & {
     session: MobileNativeChatSession
+    sessionCommands?: readonly AgentSessionSlashCommand[]
     isWorking: boolean
     turnId: string | null
     /** What labels the live turn's one indicator row. */

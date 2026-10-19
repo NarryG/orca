@@ -6,6 +6,7 @@ import type { AgentType } from './agent-status-types'
 import type { SessionOptionDescriptor, SessionOptionValue } from './native-chat-session-options'
 import type { SlashCommandSuggestion } from './native-chat-slash-commands'
 import type { AgentSessionConversationCommand } from './agent-session-conversation-command'
+import type { AgentSessionSlashCommand } from './agent-session-wire'
 
 const MODEL_COMMAND: SlashCommandSuggestion = {
   name: 'model',
@@ -30,6 +31,7 @@ export const STRUCTURED_AGENT_SESSION_SLASH_COMMANDS: readonly SlashCommandSugge
 
 export type StructuredAgentSessionComposerOptions = {
   agent?: AgentType
+  sessionCommands?: readonly AgentSessionSlashCommand[]
   snapshot: readonly SessionOptionDescriptor[]
   invokeAction: (id: string) => Promise<boolean>
   setOption: (id: string, value: SessionOptionValue) => Promise<boolean>
@@ -108,9 +110,18 @@ function structuredRecognizedCommands(agent: AgentType): readonly SlashCommandSu
  *  would be silently dropped, whereas a pass-through command is a real send. */
 export function isStructuredAgentSessionComposerCommand(
   text: string,
-  agent: AgentType = 'codex'
+  agent: AgentType = 'codex',
+  sessionCommands?: readonly AgentSessionSlashCommand[]
 ): boolean {
   const command = commandParts(text)
+  // OMP advertises this native ACP command; it is not a host option mutation.
+  if (
+    agent === 'omp' &&
+    command?.name === 'fast' &&
+    sessionCommands?.some((entry) => entry.name === 'fast' && entry.kind === 'command')
+  ) {
+    return false
+  }
   return Boolean(
     command && structuredRecognizedCommands(agent).some((entry) => entry.name === command.name)
   )
@@ -178,7 +189,10 @@ export async function dispatchStructuredAgentSessionComposerCommand(
       error: null
     }
   }
-  if (!command || !isStructuredAgentSessionComposerCommand(text, controller.agent)) {
+  if (
+    !command ||
+    !isStructuredAgentSessionComposerCommand(text, controller.agent, controller.sessionCommands)
+  ) {
     return { handled: false, accepted: false, error: null }
   }
   if (command.name === 'clear' || command.name === 'compact') {
