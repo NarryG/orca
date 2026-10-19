@@ -19,6 +19,8 @@ import {
 import { stubRuntimeEnvironmentBridge } from './runtime-environment-bridge-fixture'
 import { clearRuntimeCompatibilityCache } from './runtime-rpc-client'
 import { createRuntimeAgentBackgroundTerminal } from '../lib/runtime-agent-background-create'
+import { launchAgentInWebHostTab } from '../lib/launch-agent-web-host-tab'
+import { buildAgentStartupPlan } from '../../../shared/tui-agent-startup'
 
 const mocks = vi.hoisted(() => ({
   getState: vi.fn(),
@@ -706,4 +708,59 @@ describe('createWebRuntimeSessionTerminal', () => {
       expect(creates).toBe(1)
     }
   )
+
+  it('preserves prepared OMP thinking argv for a promptless web legacy launch', async () => {
+    const state = mocks.getState()
+    mocks.getState.mockReturnValue({ ...state, setActiveTabType: vi.fn() })
+    const creates: { command?: string }[] = []
+    const runtimeCall = vi.fn(
+      async (request: { method: string; params?: { command?: string } }) => {
+        if (request.method === 'status.get') {
+          return {
+            id: 'status',
+            ok: true,
+            result: {
+              runtimeProtocolVersion: 3,
+              minCompatibleRuntimeClientVersion: 2,
+              capabilities: ['agent.launch.omp-thinking.v1']
+            }
+          }
+        }
+        if (request.method === 'session.tabs.createTerminal') {
+          creates.push(request.params ?? {})
+          return { id: 'create', ok: true, result: { tab: { id: 'host-tab-1' } } }
+        }
+        return { id: 'list', ok: true, result: makeSnapshot() }
+      }
+    )
+    stubRuntimeEnvironmentBridge({ call: runtimeCall })
+    const startupPlan = buildAgentStartupPlan({
+      agent: 'omp',
+      prompt: '',
+      cmdOverrides: {},
+      platform: 'linux',
+      allowEmptyPromptLaunch: true,
+      sessionOptions: { model: 'anthropic/claude-opus-5-5', effort: 'off' }
+    })
+    if (!startupPlan) {
+      throw new Error('Missing OMP launch plan')
+    }
+
+    await launchAgentInWebHostTab({
+      agent: 'omp',
+      worktreeId: WORKTREE_ID,
+      environmentId: ENVIRONMENT_ID,
+      startupPlan,
+      prompt: '',
+      promptDelivery: 'auto-submit',
+      pastePromptAfterReady: null,
+      submitPastedPrompt: false
+    })
+
+    expect(creates).toHaveLength(1)
+    expect(creates[0].command).toMatch(/['"]?--thinking['"]?\s+['"]?off(?:['"]|\s|$)/)
+    expect(creates[0].command).toMatch(
+      /['"]?--model['"]?\s+['"]?anthropic\/claude-opus-5-5(?:['"]|\s|$)/
+    )
+  })
 })

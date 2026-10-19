@@ -60,10 +60,10 @@ export function launchAgentInWebHostTab(args: {
     ...(cwd?.trim() ? { cwd } : {}),
     ...(viewMode ? { viewMode } : {}),
     agentSessionKind: 'fresh',
+    command: startupPlan.launchCommand,
     ...(hasPrompt
       ? {
           launchAgent: agent,
-          command: startupPlan.launchCommand,
           ...(startupPlan.env ? { env: startupPlan.env } : {}),
           launchConfig: startupPlan.launchConfig,
           ...(startupPlan.startupCommandDelivery
