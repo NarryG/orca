@@ -23,6 +23,8 @@ jobs:
             candidate: e4e008065f3b97e1ff93648c469dc0f5cd6d37c0
           - topic: thinking
             candidate: 8da780c0801c34f76e22392e8f552491e844ea23
+          - topic: fast
+            candidate: 20f5c5e2ab03d68a505d2668511c133017e973ac
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
       CI: '1'
@@ -33,7 +35,7 @@ jobs:
         with:
           ref: ${{ matrix.candidate }}
           persist-credentials: false
-          fetch-depth: 1
+          fetch-depth: 8
       - name: Verify exact candidate source
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
       - name: Fetch explicit compatibility baselines
