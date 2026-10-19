@@ -1,4 +1,4 @@
-name: OMP candidate contribution readiness
+name: OMP minimal baseline attribution
 on:
   push:
     branches:
@@ -6,63 +6,26 @@ on:
 permissions:
   contents: read
 jobs:
-  required-linux:
-    name: Linux checks (${{ matrix.candidate.topic }}, shard ${{ matrix.shard }}/4)
+  compare-existing-contracts:
+    name: Existing contracts (${{ matrix.source.name }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
+    timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 20
       matrix:
-        shard: [1, 2, 3, 4]
-        candidate:
-          - topic: fast-minimal
+        source:
+          - name: untouched-baseline
+            sha: 51530bb86cb2f799fb5162840654c64d9ff48fb2
+          - name: fast-minimal
             sha: 9e2ca463e74670a440e476f5c5352414d84a45fa
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
       CI: '1'
-      TERM: xterm-256color
-      EXPECTED_HEAD: ${{ matrix.candidate.sha }}
-      ORCA_BALANCE_UNIT_SHARDS: '1'
-      ORCA_SHARD_SOURCE_SHA: ${{ matrix.candidate.sha }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ matrix.candidate.sha }}
+          ref: ${{ matrix.source.sha }}
           persist-credentials: false
-          fetch-depth: 8
-      - name: Verify exact candidate source
-        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
-      - name: Fetch explicit compatibility baselines
-        run: |
-          git remote add readiness-upstream https://github.com/stablyai/orca.git
-          git fetch --depth=1 --no-tags readiness-upstream \
-            refs/tags/v1.4.184:refs/tags/v1.4.184 \
-            refs/tags/v1.4.190:refs/tags/v1.4.190 \
-            refs/tags/v1.4.199:refs/tags/v1.4.199 \
-            refs/tags/v1.4.205:refs/tags/v1.4.205 \
-            refs/tags/v1.4.211:refs/tags/v1.4.211 \
-            refs/tags/v1.4.212:refs/tags/v1.4.212 \
-            refs/tags/v1.4.214:refs/tags/v1.4.214 \
-            refs/tags/v1.4.218:refs/tags/v1.4.218 \
-            refs/tags/v1.4.219:refs/tags/v1.4.219 \
-            refs/tags/v1.4.220:refs/tags/v1.4.220 \
-            refs/tags/v1.4.221:refs/tags/v1.4.221 \
-            refs/tags/v1.4.222:refs/tags/v1.4.222 \
-            refs/tags/v1.4.224:refs/tags/v1.4.224 \
-            refs/tags/v1.4.229:refs/tags/v1.4.229 \
-            4cb013c0a9251275fa3d20ea33b45429e07aa6be:refs/orca-readiness/history/4cb013c0a9 \
-            4bb337741c335cfcc428d3b4271023566e2dadb8:refs/orca-readiness/history/4bb337741c \
-            fd9125ea8c7b347cd8b675a4095e31cd3c865d25:refs/orca-readiness/history/fd9125ea8c \
-            5a56636f6679071d6ec68b851ef7932cd3222560:refs/orca-readiness/history/5a56636f66 \
-            aac38d698ff75ac4c8658addab48ef5a83617619:refs/orca-readiness/history/aac38d698f \
-            b49abdb1f4da6b3d62dfa9ccf3c74dc9e74d291c:refs/orca-readiness/history/b49abdb1f4 \
-            f97ca2a49d9c711dab54a656a7f8a47ae6c6749c:refs/orca-readiness/history/f97ca2a49d \
-            e817b0e23747ffd6f16f2ddefea861950d82a3c0:refs/orca-readiness/history/e817b0e237 \
-            3727100cc9dbcea6201f8a3e506676a3c4b53b18:refs/orca-readiness/history/3727100cc9 \
-            b6b4d68cd844c921c7c5191cef72d5adafc0dafa:refs/orca-readiness/history/b6b4d68cd8 \
-            6fcc183ab951fb751cf02ccb9e2af3cf129a4316:refs/orca-readiness/original-baseline \
-            51530bb86cb2f799fb5162840654c64d9ff48fb2:refs/orca-readiness/baseline
       - uses: ./.github/actions/install-node-dependencies
         with:
           native-runtime: node
@@ -71,61 +34,5 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version-file: config/.bun-version
-      - name: Install native Linux shell and display prerequisites
-        run: |
-          sudo add-apt-repository --yes --no-update ppa:fish-shell/release-4
-          sudo apt-get update
-          sudo apt-get install -y zsh fish lsof xvfb xauth libgtk-3-0t64
-          version="$(fish --version)"
-          major="${version##*version }"
-          major="${major%%.*}"
-          test "$major" -ge 4
-          case "$(uname -r)" in *[Mm]icrosoft*|*[Ww][Ss][Ll]*) exit 1;; esac
-          printf '%s\n' "$version"
-          git --version
-          node --version
-          bun --version
-          git init --ref-format=reftable "$RUNNER_TEMP/reftable-probe"
-      - name: Full required lint before mobile installation
-        if: matrix.shard == 1
-        run: pnpm lint
-      - uses: ./.github/actions/install-mobile-dependencies
-      - name: Full required typecheck
-        if: matrix.shard == 1
-        run: pnpm typecheck
-      - name: Changed-code quality against pinned upstream
-        if: matrix.shard == 1
-        run: node config/scripts/check-changed-code-quality.mjs 51530bb86cb2f799fb5162840654c64d9ff48fb2
-      - name: Install Electron binary
-        run: node config/scripts/install-electron-package-binary.mjs
-      - name: Install relay integration prerequisites
-        working-directory: cloud
-        run: |
-          npx --yes pnpm@10.34.6 --filter '@orca-cloud/relay...' install --frozen-lockfile --ignore-scripts
-          npx --yes pnpm@10.34.6 --filter '@orca-cloud/relay^...' build
-      - name: Install matching browser prerequisites
-        run: |
-          pnpm exec playwright install --with-deps chromium
-          pnpm exec playwright-core install --with-deps chromium webkit
-          chrome="$(command -v google-chrome || command -v google-chrome-stable || true)"
-          if [ -z "$chrome" ]; then
-            echo "::error::No Google Chrome on the runner; the render check would silently skip."
-            exit 1
-          fi
-          "$chrome" --version
-          echo "ORCA_MOBILE_WEB_RENDER_BROWSER=$chrome" >> "$GITHUB_ENV"
-      - name: Correct trusted zsh completion permissions
-        run: |
-          audit_status=0
-          zsh -fc 'autoload -Uz compaudit; compaudit' > "$RUNNER_TEMP/compaudit-paths" || audit_status=$?
-          test "$audit_status" -le 1
-          while IFS= read -r directory; do
-            test -n "$directory" || continue
-            case "$directory" in
-              /usr/local/share|/usr/local/share/zsh|/usr/local/share/zsh/*|/usr/share/zsh|/usr/share/zsh/*) sudo chmod go-w -- "$directory";;
-              *) printf 'Unexpected insecure completion path: %s\n' "$directory"; exit 1;;
-            esac
-          done < "$RUNNER_TEMP/compaudit-paths"
-          zsh -fc 'autoload -Uz compaudit; compaudit'
-      - name: Full supported Node suite shard (no file filters or exclusions)
-        run: xvfb-run --auto-servernum pnpm test:node --maxWorkers=4 --shard=${{ matrix.shard }}/4
+      - name: Compare unchanged Node contracts
+        run: pnpm test:node src/main/emulator/serve-sim-kill-contract.test.ts src/main/daemon/daemon-init-provider-installation.test.ts --maxWorkers=1
