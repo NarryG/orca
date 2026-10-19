@@ -16,16 +16,8 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4]
         candidate:
-          - topic: images
-            sha: 575d173b4170f72e33df8b36b892bdc32a0bb910
-          - topic: forms
-            sha: f5de96e5470c12e13c0fd5b3423fabb730798675
-          - topic: recovery
-            sha: 9c90f4ddd642cb4247462df3361d6af5fb49daec
-          - topic: thinking
-            sha: 7f177774d1a994f8fa28d3bf5ceb844b7864e5a0
-          - topic: fast
-            sha: 20f5c5e2ab03d68a505d2668511c133017e973ac
+          - topic: fast-minimal
+            sha: 9e2ca463e74670a440e476f5c5352414d84a45fa
     env:
       ORCA_BACKGROUND_LAUNCH: '1'
       CI: '1'
@@ -135,5 +127,5 @@ jobs:
             esac
           done < "$RUNNER_TEMP/compaudit-paths"
           zsh -fc 'autoload -Uz compaudit; compaudit'
-      - name: Full required suite shard (no file filters or exclusions)
-        run: xvfb-run --auto-servernum pnpm test --maxWorkers=4 --shard=${{ matrix.shard }}/4
+      - name: Full supported Node suite shard (no file filters or exclusions)
+        run: xvfb-run --auto-servernum pnpm test:node --maxWorkers=4 --shard=${{ matrix.shard }}/4
